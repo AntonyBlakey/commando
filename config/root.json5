@@ -4,9 +4,9 @@
       Cancel: ["Escape", "ctrl-g"],
       ToggleHelp: ["cmd-question"],
     },
-    select_focus {
-      keys: "asdfghjklqwertyuiopzxcvbnm1234567890"
-    }
+    // select_focus: {
+    //   keys: "asdfghjklqwertyuiopzxcvbnm1234567890"
+    // },
     handlers: {
       ShowHelp: 'commando_show_help.sh',
       HideHelp: 'commando_hide_help.sh',

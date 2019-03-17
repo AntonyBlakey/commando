@@ -157,7 +157,8 @@ impl Binding {
             config::Binding::Command {
                 label,
                 command,
-                is_loop: false,
+                r#loop: false,
+                select_window: _,
             } => Binding::Exec {
                 group_label,
                 label: label.clone(),
@@ -166,7 +167,8 @@ impl Binding {
             config::Binding::Command {
                 label,
                 command,
-                is_loop: true,
+                r#loop: true,
+                select_window: _,
             } => Binding::Call {
                 group_label,
                 label: label.clone(),

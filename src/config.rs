@@ -74,8 +74,10 @@ pub enum Binding {
     Command {
         label: String,
         command: String,
-        #[serde(rename = "loop", default)]
-        is_loop: bool,
+        #[serde(default)]
+        r#loop: bool,
+        #[serde(default)]
+        select_window: bool,
     },
     Mode {
         label: String,
