@@ -1,0 +1,92 @@
+body {
+  font-family: "Operator Mono SSm Medium", "Source Code Pro";
+  font-size: 8pt;
+  color: hsl(220, 90%, 45%);
+  background-color: hsl(0, 0%, 95%);
+}
+
+#body {
+  border: 1px solid red;
+  padding: 0.5em 1em;
+  float: left;
+}
+
+#content {
+  grid-row: 1;
+  grid-column: 2;
+  display: grid;
+  padding: 0.1em 1em;
+  margin: 0.5em 0em;
+  margin-top: 0;
+  row-gap: 0.1em;
+}
+
+.group-label {
+  padding: 0 0.6em;
+  text-align: right;
+  font-style: italic;
+  color: black;
+  border-right: 1px solid hsl(0, 0%, 60%);
+}
+
+.key {
+  white-space: nowrap;
+  text-align: right;
+  padding-left: 0.5em;
+  color: black;
+}
+
+.key .prefix {
+  color: hsl(0, 0%, 30%);
+}
+
+.key .symbol {
+  font-family: "Lucida Grande";
+  font-size: 9pt;
+}
+
+.key .prefix .symbol {
+  margin-right: 0.1em;
+}
+
+.key::after {
+  font-family: "Fira Code";
+  font-size: 9pt;
+  content: '->';
+  line-height: 1;
+  padding: 0 0.3em;
+  color: hsl(0, 0%, 60%);
+}
+
+.group-background {
+  background-color: hsl(0, 0%, 90%);
+  position: relative;
+  z-index: -1;
+  padding-left: 0.5em;
+}
+
+.label {
+  white-space: nowrap;
+  padding-right: 0.5em;
+}
+
+.label.exec {
+  color: hsl(220, 90%, 45%);
+}
+
+.label.call {
+  color: hsl(180, 80%, 40%);
+}
+
+.label.mode {
+  color: hsl(0, 30%, 40%);
+}
+
+/* .label.call::after {
+  font-size: 9pt;
+  line-height: 1;
+  position: relative;
+  top: 1px;
+  left: 2px;
+  content: '\27f2';
+} */

@@ -1,0 +1,25 @@
+[
+  {
+    commands: {
+      Cancel: ["Escape", "ctrl-g"],
+      ToggleHelp: ["cmd-question"],
+    },
+    select_focus {
+      keys: "asdfghjklqwertyuiopzxcvbnm1234567890"
+    }
+    handlers: {
+      ShowHelp: 'commando_show_help.sh',
+      HideHelp: 'commando_hide_help.sh',
+      EnterModal: 'echo "** ENTER"',
+      ExitModal: 'echo "** EXIT"',
+    },
+    keys: {
+      // "Command": { label: "Window Manager", mode: "window-manager" },
+      // "F35": { label: "Window Manager", mode: "window-manager" },
+      "cmd-space": { label: "Window Manager", mode: "window-manager" },
+      //"Control": { label: "Contextual", mode: "root" },
+      // "F34": { label: "Contextual", mode: "root" },
+      "cmd-backslash": { label: "Contextual", mode: "root" },
+    }
+  }
+]
