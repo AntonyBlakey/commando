@@ -1,6 +1,6 @@
 [package]
 name = "commando"
-description = "Universal Interface Provided for X11"
+description = "Universal Interface Provider for X11"
 version = "1.0.0"
 repository = "https://github.com/antonyblakey/commando"
 authors = ["Antony Blakey <antony.blakey@gmail.com>"]

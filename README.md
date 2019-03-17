@@ -1,1 +1,1 @@
-# dalistener - listen for trigger keys in X11
+# commando - universal interface provider for X11
