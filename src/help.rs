@@ -166,7 +166,7 @@ impl HelpEngine {
                 html {
                     head {
                         style(type="text/css") {
-                            @ for f in &model.css_files {
+                            @ for f in model.files.iter().filter(|f| f.file_name().unwrap() == "help.css") {
                                 : Raw(std::fs::read_to_string(f).unwrap());
                             }
                         }
@@ -199,7 +199,7 @@ impl HelpEngine {
                                 : format!("{},", group_keys.len());
                             }
                             : "];";
-                            @ for f in &model.js_files {
+                            @ for f in model.files.iter().filter(|f| f.file_name().unwrap() == "help.js") {
                                 : Raw(std::fs::read_to_string(f).unwrap());
                             }
                         }

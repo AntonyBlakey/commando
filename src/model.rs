@@ -1,6 +1,6 @@
 use super::{config, key_description::KeyDescription, keysource::KeySource};
 use regex::Regex;
-use std::{path::PathBuf, collections::HashMap};
+use std::{collections::HashMap, path::PathBuf};
 
 pub type DefinitionId = String;
 pub type KeySpec = String;
@@ -15,8 +15,7 @@ pub struct Model {
     // Preserved for producing help
     pub keys: HashMap<KeySpec, Binding>,
     pub commands: HashMap<Command, Vec<KeySpec>>,
-    pub css_files: Vec<PathBuf>,
-    pub js_files: Vec<PathBuf>,
+    pub files: Vec<PathBuf>,
 
     pub definitions: HashMap<DefinitionId, Vec<Definition>>,
     pub handlers: HashMap<Event, String>,
@@ -26,13 +25,25 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new<T>(definitions: T, css_files: Vec<PathBuf>, js_files: Vec<PathBuf>, keysource: &KeySource) -> Model
-    where
-        T: Iterator<Item = config::Definition>,
-    {
+    pub fn new(files: Vec<PathBuf>, keysource: &KeySource) -> Model
+where {
+        let mut model = Model {
+            files,
+            ..Default::default()
+        };
+
         let keysyms = keysource.key_symbols();
 
-        let mut model = Model { css_files, js_files, ..Default::default() };
+        let definitions = model
+            .files
+            .iter()
+            .filter(|f| {
+                let ext = f.extension().unwrap();
+                ext == "json5" || ext == "json"
+            })
+            .map(|f| std::fs::read_to_string(f).unwrap())
+            .map(|source| config::ConfigFile::from_string(&source).unwrap())
+            .flat_map(|config| config.definitions);
 
         for def in definitions {
             match def {
