@@ -1,0 +1,14 @@
+body {
+  margin: 0;
+}
+
+#body {
+  font-family: "Operator Mono SSm Medium", "Source Code Pro";
+  font-size: 48pt;
+  line-height: 1.0;
+  color: hsl(220, 90%, 45%);
+  background-color: hsl(0, 0%, 95%);
+  border: 1px solid red;
+  padding: 0px 8px;
+  float: left;
+}

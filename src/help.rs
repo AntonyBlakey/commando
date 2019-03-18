@@ -97,7 +97,7 @@ impl HelpEngine {
     }
 
     pub fn show(&mut self, model: &Model, definition_id: &Option<String>) {
-        let path = PathBuf::from("/tmp/dalistener.help.html");
+        let path = PathBuf::from("/tmp/commando.help.html");
         let mut file = std::fs::File::create(&path).unwrap();
 
         let mut all_group_labels = Vec::new();

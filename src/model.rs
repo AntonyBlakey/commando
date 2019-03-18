@@ -1,4 +1,4 @@
-use super::{config, key_description::KeyDescription, event_source::EventSource};
+use super::{config, event_source::EventSource, key_description::KeyDescription};
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -25,8 +25,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(files: Vec<PathBuf>, event_source: &EventSource) -> Model
-where {
+    pub fn new(files: Vec<PathBuf>, event_source: &EventSource) -> Model {
         let mut model = Model {
             files,
             ..Default::default()

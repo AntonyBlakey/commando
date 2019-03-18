@@ -1,3 +1,5 @@
+use std::{io::Write, path::PathBuf};
+use horrorshow::{append_html, helper::doctype, html, Raw};
 use super::{event_source::EventSource, model::*};
 
 #[derive(Debug)]
@@ -19,7 +21,10 @@ impl<'a> WindowSelector<'a> {
     }
 
     fn new(model: &'a Model, event_source: &'a EventSource<'a>) -> WindowSelector<'a> {
-        WindowSelector { model, event_source }
+        WindowSelector {
+            model,
+            event_source,
+        }
     }
 
     fn main_loop(&self) {
@@ -30,22 +35,30 @@ impl<'a> WindowSelector<'a> {
             (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE),
             (xcb::CW_OVERRIDE_REDIRECT, 1),
         ];
+        let root = screen.root();
+        let root_visual = screen.root_visual();
 
-        for w in self.target_windows(&screen) {
+        // TODO: get this from config and cache the images
+        // for char in "asdfghjklqwertyuiopzxcvbnm1234567890".chars() {
+        for char in "as".chars() {
+            self.generate_image(char);
+        }
+
+        for window in self.target_windows(&screen) {
             let new_id = connection.generate_id();
 
             xcb::create_window(
                 connection,
                 xcb::COPY_FROM_PARENT as u8,
                 new_id,
-                screen.root(),
-                w.pos.0,
-                w.pos.1,
+                root,
+                window.pos.0,
+                window.pos.1,
                 100,
                 100,
                 0,
                 xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
-                screen.root_visual(),
+                root_visual,
                 &values,
             );
 
@@ -54,7 +67,9 @@ impl<'a> WindowSelector<'a> {
 
         connection.flush();
 
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        self.event_source.grab_keyboard();
+        self.event_source.wait_for_event(None);
+        self.event_source.ungrab_keyboard();
     }
 
     fn connection(&self) -> &xcb::Connection {
@@ -108,5 +123,63 @@ impl<'a> WindowSelector<'a> {
         result.sort_by_key(|w| w.pos.0);
         result.sort_by_key(|w| w.pos.1);
         result
+    }
+    
+    fn generate_image(&self, key: char) {
+        let path = PathBuf::from("/tmp/commando.select.html");
+        let mut file = std::fs::File::create(&path).unwrap(); 
+        write!(
+            file,
+            "{}",
+            html! {
+                : doctype::HTML;
+                html {
+                    head {
+                        style(type="text/css") {
+                            @ for f in self.model.files.iter().filter(|f| f.file_name().unwrap() == "select.css") {
+                                : Raw(std::fs::read_to_string(f).unwrap());
+                            }
+                        }
+                    }
+                    body {
+                        div(id="body") {
+                            div(id="key") {
+                               : key 
+                            }
+                        }
+                        script(type="text/javascript") {
+                            @ for f in self.model.files.iter().filter(|f| f.file_name().unwrap() == "select.js") {
+                                : Raw(std::fs::read_to_string(f).unwrap());
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        .unwrap();
+
+        {
+            let status = std::process::Command::new("chromium-browser")
+                .arg("--headless")
+                .arg("--screenshot=/tmp/commando.select.png")
+                .arg("--window-size=256x256")
+                .arg(path.to_str().unwrap())
+                .status();
+            if let Err(err) = status {
+                eprintln!("command failed with {:?}", err);
+            }
+        }
+        {
+            let status = std::process::Command::new("convert")
+                .arg("/tmp/commando.select.png")
+                .arg("-trim")
+                .arg("-shave")
+                .arg("1x1")
+                .arg("/tmp/commando.select.trim.png")
+                .status();
+            if let Err(err) = status {
+                eprintln!("command failed with {:?}", err);
+            }
+        }
     }
 }

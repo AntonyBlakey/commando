@@ -91,7 +91,7 @@ impl<'a> EventSource<'a> {
             if event.response_type() == xcb::KEY_PRESS {
                 let press_event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
                 if !self.modifier_keycodes.contains(&press_event.detail()) {
-                    if let Some(key) = self.wait_for_event_release(&press_event) {
+                    if let Some(key) = self.wait_for_event_release(&press_event, expose_handler) {
                         return Some(key);
                     }
                 }
@@ -109,13 +109,17 @@ impl<'a> EventSource<'a> {
         &self.connection
     }
 
-    fn wait_for_event_release(&self, press_event: &xcb::KeyPressEvent) -> Option<KeyDescription> {
+    fn wait_for_event_release(
+        &self,
+        press_event: &xcb::KeyPressEvent,
+        expose_handler: Option<&ExposeHandler>,
+    ) -> Option<KeyDescription> {
         while let Some(event) = self.wait_for_raw_event() {
             match event.response_type() {
                 xcb::KEY_RELEASE => {
                     let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
                     if release_event.detail() != press_event.detail() {
-                        self.wait_for_cancelled_key_release(press_event);
+                        self.wait_for_cancelled_key_release(press_event, expose_handler);
                         return None;
                     }
                     if release_event.state() != press_event.state() {
@@ -141,8 +145,13 @@ impl<'a> EventSource<'a> {
                     return Some(KeyDescription::from_key_press_event(&press_event));
                 }
                 xcb::KEY_PRESS => {
-                    self.wait_for_cancelled_key_release(press_event);
+                    self.wait_for_cancelled_key_release(press_event, expose_handler);
                     return None;
+                }
+                xcb::EXPOSE => {
+                    if let Some(f) = expose_handler {
+                        f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
+                    }
                 }
                 _ => (),
             }
@@ -151,12 +160,20 @@ impl<'a> EventSource<'a> {
         return None;
     }
 
-    fn wait_for_cancelled_key_release(&self, press_event: &xcb::KeyPressEvent) {
+    fn wait_for_cancelled_key_release(
+        &self,
+        press_event: &xcb::KeyPressEvent,
+        expose_handler: Option<&ExposeHandler>,
+    ) {
         while let Some(event) = self.wait_for_raw_event() {
             if event.response_type() == xcb::KEY_RELEASE {
                 let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
                 if release_event.detail() == press_event.detail() {
                     return;
+                }
+            } else if event.response_type() == xcb::EXPOSE {
+                if let Some(f) = expose_handler {
+                    f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
                 }
             }
         }
