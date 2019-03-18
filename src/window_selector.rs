@@ -143,14 +143,7 @@ impl<'a> WindowSelector<'a> {
                     }
                     body {
                         div(id="body") {
-                            div(id="key") {
-                               : key 
-                            }
-                        }
-                        script(type="text/javascript") {
-                            @ for f in self.model.files.iter().filter(|f| f.file_name().unwrap() == "select.js") {
-                                : Raw(std::fs::read_to_string(f).unwrap());
-                            }
+                            : key 
                         }
                     }
                 }
