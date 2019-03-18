@@ -3,16 +3,18 @@
 mod action;
 mod config;
 mod help;
-mod interpreter;
 mod key_description;
-mod keysource;
 mod model;
+mod key_source;
+mod key_dispatcher;
+mod window_selector;
 
-use interpreter::Interpreter;
-use keysource::KeySource;
+use key_dispatcher::KeyDispatcher;
+use key_source::KeySource;
 use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use window_selector::WindowSelector;
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -48,6 +50,28 @@ struct SelectCommand {
     config: Vec<PathBuf>,
 }
 
+fn main() {
+    let args = Args::from_args();
+    args.verbosity.setup_env_logger("commando").unwrap();
+
+    let (connection, screen_number) = xcb::Connection::connect(None).unwrap();
+
+    match args.command {
+        Command::Listen(ListenCommand { config }) => {
+            let key_source = KeySource::new(&connection, screen_number);
+            let files = files_from_config(&config);
+            let model = Model::new(files, &key_source);
+            KeyDispatcher::run(&model, &key_source);
+        }
+        Command::Select(SelectCommand { config }) => {
+            let key_source = KeySource::new(&connection, screen_number);
+            let files = files_from_config(&config);
+            let model = Model::new(files, &key_source);
+            WindowSelector::run(&model, &key_source);
+        }
+    }
+}
+
 fn files_from_config(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut result = Vec::new();
 
@@ -60,21 +84,4 @@ fn files_from_config(paths: &[PathBuf]) -> Vec<PathBuf> {
     }
 
     result
-}
-
-fn main() {
-    let args = Args::from_args();
-    args.verbosity.setup_env_logger("commando").unwrap();
-
-    let (connection, screen_number) = xcb::Connection::connect(None).unwrap();
-
-    match args.command {
-        Command::Listen(ListenCommand { config }) => {
-            let keysource = KeySource::new(&connection, screen_number);
-            let files = files_from_config(&config);
-            let model = Model::new(files, &keysource);
-            Interpreter::run(&model, &keysource);
-        }
-        Command::Select(SelectCommand { config: _ }) => {}
-    }
 }

@@ -113,6 +113,10 @@ impl<'a> KeySource<'a> {
         return None;
     }
 
+    pub fn connection(&self) -> &'a xcb::Connection {
+        &self.connection
+    }
+
     fn wait_for_key_release(&self, press_event: &xcb::KeyPressEvent) -> Option<KeyDescription> {
         while let Some(event) = self.wait_for_event() {
             match event.response_type() {

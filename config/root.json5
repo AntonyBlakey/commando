@@ -15,11 +15,11 @@
     },
     keys: {
       // "Command": { label: "Window Manager", mode: "window-manager" },
-      // "F35": { label: "Window Manager", mode: "window-manager" },
-      "cmd-space": { label: "Window Manager", mode: "window-manager" },
+      "F35": { label: "Window Manager", mode: "window-manager" },
+      // "cmd-space": { label: "Window Manager", mode: "window-manager" },
       //"Control": { label: "Contextual", mode: "root" },
-      // "F34": { label: "Contextual", mode: "root" },
-      "cmd-backslash": { label: "Contextual", mode: "root" },
+      "F34": { label: "Contextual", mode: "root" },
+      // "cmd-backslash": { label: "Contextual", mode: "root" },
     }
   }
 ]
