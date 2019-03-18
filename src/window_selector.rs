@@ -1,5 +1,13 @@
 use super::{key_source::KeySource, model::*};
 
+#[derive(Debug)]
+struct TargetWindow {
+    id: xcb::xproto::Window,
+    name: String,
+    pos: (i16, i16),
+    size: (u16, u16),
+}
+
 pub struct WindowSelector<'a> {
     model: &'a Model,
     key_source: &'a KeySource<'a>,
@@ -15,60 +23,90 @@ impl<'a> WindowSelector<'a> {
     }
 
     fn main_loop(&self) {
-        eprintln!(
-            "{:?}",
-            self.selectable_windows()
-                .iter()
-                .map(|w| self.get_window_name(*w))
-                .collect::<Vec<_>>()
-        );
+        let connection = self.connection();
+        let screen = connection.get_setup().roots().nth(0).unwrap();
+        let values = [
+            (xcb::CW_BACK_PIXEL, screen.black_pixel()),
+            (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE),
+            (xcb::CW_OVERRIDE_REDIRECT, 1),
+        ];
+
+        for w in self.target_windows(&screen) {
+            let new_id = connection.generate_id();
+
+            xcb::create_window(
+                connection,
+                xcb::COPY_FROM_PARENT as u8,
+                new_id,
+                screen.root(),
+                w.pos.0,
+                w.pos.1,
+                100,
+                100,
+                0,
+                xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
+                screen.root_visual(),
+                &values,
+            );
+
+            xcb::map_window(connection, new_id);
+        }
+
+        connection.flush();
+
+        std::thread::sleep(std::time::Duration::from_secs(10));
     }
 
-    fn selectable_windows(&self) -> Vec<xcb::xproto::Window> {
-        let screen = self
-            .key_source
-            .connection()
-            .get_setup()
-            .roots()
-            .nth(0)
-            .unwrap();
-        let query = xcb::xproto::query_tree(self.key_source.connection(), screen.root())
-            .get_reply()
-            .unwrap();
-        query
-            .children()
-            .into_iter()
-            .map(|&w| w)
-            .filter(|&w| self.window_is_selectable(w))
-            .collect::<Vec<_>>()
+    fn connection(&self) -> &xcb::Connection {
+        self.key_source.connection()
     }
 
-    fn get_window_name(&self, window: xcb::xproto::Window) -> String {
-        let atom_utf8_string =
-            xcb::xproto::intern_atom(self.key_source.connection(), true, "UTF8_STRING")
-                .get_reply()
-                .unwrap()
-                .atom();
-        let property = xcb::xproto::get_property(
-            self.key_source.connection(),
-            false,
-            window,
-            xcb::xproto::ATOM_WM_NAME,
-            atom_utf8_string,
-            0,
-            256,
-        )
-        .get_reply()
-        .unwrap();
-        String::from(std::str::from_utf8(property.value()).unwrap())
-    }
+    fn target_windows(&self, screen: &xcb::Screen) -> Vec<TargetWindow> {
+        let mut result = Vec::new();
 
-    fn window_is_selectable(&self, window: xcb::xproto::Window) -> bool {
-        let is_viewable = xcb::xproto::get_window_attributes(self.key_source.connection(), window)
+        let atom_utf8_string = xcb::xproto::intern_atom(self.connection(), true, "UTF8_STRING")
             .get_reply()
             .unwrap()
-            .map_state()
-            == xcb::xproto::MAP_STATE_VIEWABLE as u8;
-        is_viewable && !self.get_window_name(window).is_empty()
+            .atom();
+
+        let query = xcb::xproto::query_tree(self.connection(), screen.root())
+            .get_reply()
+            .unwrap();
+
+        for &id in query.children() {
+            let match_state = xcb::xproto::get_window_attributes(self.connection(), id)
+                .get_reply()
+                .unwrap()
+                .map_state();
+            if match_state == xcb::xproto::MAP_STATE_VIEWABLE as u8 {
+                let property = xcb::xproto::get_property(
+                    self.connection(),
+                    false,
+                    id,
+                    xcb::xproto::ATOM_WM_NAME,
+                    atom_utf8_string,
+                    0,
+                    256,
+                )
+                .get_reply()
+                .unwrap();
+                let name = std::str::from_utf8(property.value()).unwrap();
+                if !name.is_empty() {
+                    let g = xcb::xproto::get_geometry(self.connection(), id)
+                        .get_reply()
+                        .unwrap();
+                    result.push(TargetWindow {
+                        id,
+                        name: String::from(name),
+                        pos: (g.x(), g.y()),
+                        size: (g.width(), g.height()),
+                    });
+                }
+            }
+        }
+
+        result.sort_by_key(|w| w.pos.0);
+        result.sort_by_key(|w| w.pos.1);
+        result
     }
 }
