@@ -1,7 +1,9 @@
 use super::key_description::KeyDescription;
 use std::{cell::RefCell, collections::HashSet};
 
-pub struct KeySource<'a> {
+type ExposeHandler = Fn(&xcb::ExposeEvent);
+
+pub struct EventSource<'a> {
     connection: &'a xcb::Connection,
     screen_number: i32,
     modifier_keycodes: HashSet<xcb::xproto::Keycode>,
@@ -9,7 +11,7 @@ pub struct KeySource<'a> {
     pushed_back_event: RefCell<Option<xcb::base::GenericEvent>>, // RefCell because we need interior mutability
 }
 
-impl<'a> KeySource<'a> {
+impl<'a> EventSource<'a> {
     pub fn new(connection: &'a xcb::Connection, screen_number: i32) -> Self {
         Self {
             connection,
@@ -84,28 +86,18 @@ impl<'a> KeySource<'a> {
         self.connection.flush();
     }
 
-    pub fn poll_for_event(&self) -> Option<xcb::base::GenericEvent> {
-        let pushed_back_event = self.pushed_back_event.replace(None);
-        if pushed_back_event.is_some() {
-            return pushed_back_event;
-        }
-
-        self.allow_events();
-        self.connection.poll_for_event()
-    }
-
-    pub fn pushback_event(&self, event: xcb::base::GenericEvent) {
-        self.pushed_back_event.replace(Some(event));
-    }
-
-    pub fn wait_for_key(&self) -> Option<KeyDescription> {
-        while let Some(event) = self.wait_for_event() {
+    pub fn wait_for_event(&self, expose_handler: Option<&ExposeHandler>) -> Option<KeyDescription> {
+        while let Some(event) = self.wait_for_raw_event() {
             if event.response_type() == xcb::KEY_PRESS {
                 let press_event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
                 if !self.modifier_keycodes.contains(&press_event.detail()) {
-                    if let Some(key) = self.wait_for_key_release(&press_event) {
+                    if let Some(key) = self.wait_for_event_release(&press_event) {
                         return Some(key);
                     }
+                }
+            } else if event.response_type() == xcb::EXPOSE {
+                if let Some(f) = expose_handler {
+                    f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
                 }
             }
         }
@@ -117,8 +109,8 @@ impl<'a> KeySource<'a> {
         &self.connection
     }
 
-    fn wait_for_key_release(&self, press_event: &xcb::KeyPressEvent) -> Option<KeyDescription> {
-        while let Some(event) = self.wait_for_event() {
+    fn wait_for_event_release(&self, press_event: &xcb::KeyPressEvent) -> Option<KeyDescription> {
+        while let Some(event) = self.wait_for_raw_event() {
             match event.response_type() {
                 xcb::KEY_RELEASE => {
                     let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
@@ -133,7 +125,7 @@ impl<'a> KeySource<'a> {
                     // detail, state and time. Thus we peek ahead to see if it's in
                     // the queue. If the queue is empty, that means it's not a repeat
                     // because the RELEASE+PRESS pair are queued together.
-                    if let Some(next_event) = self.poll_for_event() {
+                    if let Some(next_event) = self.poll_for_raw_event() {
                         if next_event.response_type() == xcb::KEY_PRESS {
                             let second_press_event: &xcb::KeyPressEvent =
                                 unsafe { xcb::cast_event(&next_event) };
@@ -144,7 +136,7 @@ impl<'a> KeySource<'a> {
                                 continue;
                             }
                         }
-                        self.pushback_event(next_event);
+                        self.pushback_raw_event(next_event);
                     }
                     return Some(KeyDescription::from_key_press_event(&press_event));
                 }
@@ -160,7 +152,7 @@ impl<'a> KeySource<'a> {
     }
 
     fn wait_for_cancelled_key_release(&self, press_event: &xcb::KeyPressEvent) {
-        while let Some(event) = self.wait_for_event() {
+        while let Some(event) = self.wait_for_raw_event() {
             if event.response_type() == xcb::KEY_RELEASE {
                 let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
                 if release_event.detail() == press_event.detail() {
@@ -170,16 +162,17 @@ impl<'a> KeySource<'a> {
         }
     }
 
-    fn allow_events(&self) {
-        xcb::xproto::allow_events(
-            self.connection,
-            xcb::ALLOW_SYNC_KEYBOARD as u8,
-            xcb::CURRENT_TIME,
-        );
-        self.connection.flush();
+    fn poll_for_raw_event(&self) -> Option<xcb::base::GenericEvent> {
+        let pushed_back_event = self.pushed_back_event.replace(None);
+        if pushed_back_event.is_some() {
+            return pushed_back_event;
+        }
+
+        self.allow_events();
+        self.connection.poll_for_event()
     }
 
-    fn wait_for_event(&self) -> Option<xcb::base::GenericEvent> {
+    fn wait_for_raw_event(&self) -> Option<xcb::base::GenericEvent> {
         let pushed_back_event = self.pushed_back_event.replace(None);
         if pushed_back_event.is_some() {
             return pushed_back_event;
@@ -187,6 +180,19 @@ impl<'a> KeySource<'a> {
 
         self.allow_events();
         self.connection.wait_for_event()
+    }
+
+    fn pushback_raw_event(&self, event: xcb::base::GenericEvent) {
+        self.pushed_back_event.replace(Some(event));
+    }
+
+    fn allow_events(&self) {
+        xcb::xproto::allow_events(
+            self.connection,
+            xcb::ALLOW_SYNC_KEYBOARD as u8,
+            xcb::CURRENT_TIME,
+        );
+        self.connection.flush();
     }
 
     fn screen(&self) -> xcb::Screen {

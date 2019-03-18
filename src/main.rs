@@ -5,12 +5,12 @@ mod config;
 mod help;
 mod key_description;
 mod model;
-mod key_source;
+mod event_source;
 mod key_dispatcher;
 mod window_selector;
 
 use key_dispatcher::KeyDispatcher;
-use key_source::KeySource;
+use event_source::EventSource;
 use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -58,16 +58,16 @@ fn main() {
 
     match args.command {
         Command::Listen(ListenCommand { config }) => {
-            let key_source = KeySource::new(&connection, screen_number);
+            let event_source = EventSource::new(&connection, screen_number);
             let files = files_from_config(&config);
-            let model = Model::new(files, &key_source);
-            KeyDispatcher::run(&model, &key_source);
+            let model = Model::new(files, &event_source);
+            KeyDispatcher::run(&model, &event_source);
         }
         Command::Select(SelectCommand { config }) => {
-            let key_source = KeySource::new(&connection, screen_number);
+            let event_source = EventSource::new(&connection, screen_number);
             let files = files_from_config(&config);
-            let model = Model::new(files, &key_source);
-            WindowSelector::run(&model, &key_source);
+            let model = Model::new(files, &event_source);
+            WindowSelector::run(&model, &event_source);
         }
     }
 }

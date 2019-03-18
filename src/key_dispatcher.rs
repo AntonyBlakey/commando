@@ -1,4 +1,4 @@
-use super::{action::*, key_source::KeySource, model::*};
+use super::{action::*, event_source::EventSource, model::*};
 use crossbeam::{
     channel::{SendError, Sender},
     scope,
@@ -6,26 +6,26 @@ use crossbeam::{
 
 pub struct KeyDispatcher<'a> {
     model: &'a Model,
-    key_source: &'a KeySource<'a>,
+    event_source: &'a EventSource<'a>,
 }
 
 impl<'a> KeyDispatcher<'a> {
-    pub fn run(model: &'a Model, key_source: &'a KeySource<'a>) {
+    pub fn run(model: &'a Model, event_source: &'a EventSource<'a>) {
         scope(|s| {
             let (tx, rx) = crossbeam::channel::bounded(0);
             s.spawn(|_| ActionServer::run(model, rx));
-            KeyDispatcher::new(model, key_source).main_loop(tx).unwrap();
+            KeyDispatcher::new(model, event_source).main_loop(tx).unwrap();
         })
         .unwrap();
     }
 
-    fn new(model: &'a Model, key_source: &'a KeySource<'a>) -> KeyDispatcher<'a> {
-        KeyDispatcher { model, key_source }
+    fn new(model: &'a Model, event_source: &'a EventSource<'a>) -> KeyDispatcher<'a> {
+        KeyDispatcher { model, event_source }
     }
 
     fn main_loop(&self, tx: Sender<ActionMessage>) -> Result<(), SendError<ActionMessage>> {
-        self.key_source.grab_keys(self.model.bindings.keys());
-        self.key_source.grab_keys(
+        self.event_source.grab_keys(self.model.bindings.keys());
+        self.event_source.grab_keys(
             self.model
                 .command_bindings
                 .iter()
@@ -33,7 +33,7 @@ impl<'a> KeyDispatcher<'a> {
                 .map(|(k, _)| k),
         );
 
-        while let Some(key) = self.key_source.wait_for_key() {
+        while let Some(key) = self.event_source.wait_for_event(None) {
             match self.model.command_bindings.get(&key) {
                 Some(Command::Cancel) => continue,
                 Some(Command::ToggleHelp) => tx.send(ActionMessage::ToggleHelp)?,
@@ -45,7 +45,7 @@ impl<'a> KeyDispatcher<'a> {
                         tx.send(ActionMessage::Call(call.clone()))?
                     }
                     Some(Binding::Mode { mode, .. }) => {
-                        self.key_source.grab_keyboard();
+                        self.event_source.grab_keyboard();
                         tx.send(ActionMessage::Enter)?;
                         self.modal_loop(mode, &tx)?;
                         tx.send(ActionMessage::Exit)?;
@@ -65,10 +65,10 @@ impl<'a> KeyDispatcher<'a> {
     ) -> Result<(), SendError<ActionMessage>> {
         if let Some(definitions) = self.model.definitions.get(mode) {
             tx.send(ActionMessage::Mode(mode.clone()))?;
-            while let Some(key) = self.key_source.wait_for_key() {
+            while let Some(key) = self.event_source.wait_for_event(None) {
                 match self.model.command_bindings.get(&key) {
                     Some(Command::Cancel) => {
-                        self.key_source.ungrab_keyboard();
+                        self.event_source.ungrab_keyboard();
                         tx.send(ActionMessage::Cancel)?;
                         return Ok(());
                     }
@@ -78,7 +78,7 @@ impl<'a> KeyDispatcher<'a> {
                             // TODO: evaluate definition guard
                             match d.bindings.get(&key) {
                                 Some(Binding::Exec { exec, .. }) => {
-                                    self.key_source.ungrab_keyboard();
+                                    self.event_source.ungrab_keyboard();
                                     return tx.send(ActionMessage::Exec(exec.clone()));
                                 }
                                 Some(Binding::Call { call, .. }) => {

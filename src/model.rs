@@ -1,4 +1,4 @@
-use super::{config, key_description::KeyDescription, key_source::KeySource};
+use super::{config, key_description::KeyDescription, event_source::EventSource};
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -25,14 +25,14 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(files: Vec<PathBuf>, key_source: &KeySource) -> Model
+    pub fn new(files: Vec<PathBuf>, event_source: &EventSource) -> Model
 where {
         let mut model = Model {
             files,
             ..Default::default()
         };
 
-        let keysyms = key_source.key_symbols();
+        let keysyms = event_source.key_symbols();
 
         let definitions = model
             .files
@@ -76,7 +76,7 @@ where {
                     keys,
                     groups,
                 } => {
-                    let def = Definition::new(&guard, &keys, &groups, key_source);
+                    let def = Definition::new(&guard, &keys, &groups, event_source);
                     match model.definitions.get_mut(&path) {
                         Some(vec) => {
                             vec.push(def);
@@ -105,9 +105,9 @@ impl Definition {
         from_guard: &config::Guard,
         from_keys: &config::KeyMap,
         from_groups: &Vec<config::GroupDefinition>,
-        key_source: &KeySource,
+        event_source: &EventSource,
     ) -> Definition {
-        let keysyms = key_source.key_symbols();
+        let keysyms = event_source.key_symbols();
 
         let mut definition: Definition = Default::default();
 

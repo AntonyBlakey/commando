@@ -1,4 +1,4 @@
-use super::{key_source::KeySource, model::*};
+use super::{event_source::EventSource, model::*};
 
 #[derive(Debug)]
 struct TargetWindow {
@@ -10,16 +10,16 @@ struct TargetWindow {
 
 pub struct WindowSelector<'a> {
     model: &'a Model,
-    key_source: &'a KeySource<'a>,
+    event_source: &'a EventSource<'a>,
 }
 
 impl<'a> WindowSelector<'a> {
-    pub fn run(model: &'a Model, key_source: &'a KeySource<'a>) {
-        Self::new(model, key_source).main_loop();
+    pub fn run(model: &'a Model, event_source: &'a EventSource<'a>) {
+        Self::new(model, event_source).main_loop();
     }
 
-    fn new(model: &'a Model, key_source: &'a KeySource<'a>) -> WindowSelector<'a> {
-        WindowSelector { model, key_source }
+    fn new(model: &'a Model, event_source: &'a EventSource<'a>) -> WindowSelector<'a> {
+        WindowSelector { model, event_source }
     }
 
     fn main_loop(&self) {
@@ -58,7 +58,7 @@ impl<'a> WindowSelector<'a> {
     }
 
     fn connection(&self) -> &xcb::Connection {
-        self.key_source.connection()
+        self.event_source.connection()
     }
 
     fn target_windows(&self, screen: &xcb::Screen) -> Vec<TargetWindow> {
