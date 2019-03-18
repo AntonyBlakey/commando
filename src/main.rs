@@ -26,7 +26,7 @@ struct Args {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-    /// listen for key commands, showing help as appropriate
+    /// Listen for key commands, showing help as appropriate
     #[structopt(name="listen")]
     Listen(ListenCommand),
 
