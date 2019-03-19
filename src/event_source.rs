@@ -1,8 +1,6 @@
 use super::key_description::KeyDescription;
 use std::{cell::RefCell, collections::HashSet};
 
-type ExposeHandler = Fn(&xcb::ExposeEvent);
-
 pub struct EventSource<'a> {
     connection: &'a xcb::Connection,
     screen_number: i32,
@@ -86,7 +84,10 @@ impl<'a> EventSource<'a> {
         self.connection.flush();
     }
 
-    pub fn wait_for_event(&self, expose_handler: Option<&ExposeHandler>) -> Option<KeyDescription> {
+    pub fn wait_for_event<F>(&self, expose_handler: &F) -> Option<KeyDescription>
+    where
+        F: Fn(&xcb::ExposeEvent),
+    {
         while let Some(event) = self.wait_for_raw_event() {
             if event.response_type() == xcb::KEY_PRESS {
                 let press_event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
@@ -96,9 +97,8 @@ impl<'a> EventSource<'a> {
                     }
                 }
             } else if event.response_type() == xcb::EXPOSE {
-                if let Some(f) = expose_handler {
-                    f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
-                }
+                let expose_event: &xcb::ExposeEvent = unsafe { xcb::cast_event(&event) };
+                expose_handler(expose_event);
             }
         }
 
@@ -109,11 +109,14 @@ impl<'a> EventSource<'a> {
         &self.connection
     }
 
-    fn wait_for_event_release(
+    fn wait_for_event_release<F>(
         &self,
         press_event: &xcb::KeyPressEvent,
-        expose_handler: Option<&ExposeHandler>,
-    ) -> Option<KeyDescription> {
+        expose_handler: &F,
+    ) -> Option<KeyDescription>
+    where
+        F: Fn(&xcb::ExposeEvent),
+    {
         while let Some(event) = self.wait_for_raw_event() {
             match event.response_type() {
                 xcb::KEY_RELEASE => {
@@ -149,9 +152,8 @@ impl<'a> EventSource<'a> {
                     return None;
                 }
                 xcb::EXPOSE => {
-                    if let Some(f) = expose_handler {
-                        f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
-                    }
+                    let expose_event: &xcb::ExposeEvent = unsafe { xcb::cast_event(&event) };
+                    expose_handler(expose_event);
                 }
                 _ => (),
             }
@@ -160,11 +162,13 @@ impl<'a> EventSource<'a> {
         return None;
     }
 
-    fn wait_for_cancelled_key_release(
+    fn wait_for_cancelled_key_release<F>(
         &self,
         press_event: &xcb::KeyPressEvent,
-        expose_handler: Option<&ExposeHandler>,
-    ) {
+        expose_handler: &F,
+    ) where
+        F: Fn(&xcb::ExposeEvent),
+    {
         while let Some(event) = self.wait_for_raw_event() {
             if event.response_type() == xcb::KEY_RELEASE {
                 let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
@@ -172,9 +176,8 @@ impl<'a> EventSource<'a> {
                     return;
                 }
             } else if event.response_type() == xcb::EXPOSE {
-                if let Some(f) = expose_handler {
-                    f(unsafe { xcb::cast_event::<&xcb::ExposeEvent>(&event) });
-                }
+                let expose_event: &xcb::ExposeEvent = unsafe { xcb::cast_event(&event) };
+                expose_handler(expose_event);
             }
         }
     }

@@ -1,6 +1,8 @@
-use std::{io::Write, path::PathBuf};
-use horrorshow::{append_html, helper::doctype, html, Raw};
 use super::{event_source::EventSource, model::*};
+use image::GenericImageView;
+use horrorshow::{append_html, helper::doctype, html, Raw};
+use sha2::{digest::Digest, Sha256};
+use std::{collections::HashMap, io::Write};
 
 #[derive(Debug)]
 struct TargetWindow {
@@ -38,14 +40,14 @@ impl<'a> WindowSelector<'a> {
         let root = screen.root();
         let root_visual = screen.root_visual();
 
-        // TODO: get this from config and cache the images
-        // for char in "asdfghjklqwertyuiopzxcvbnm1234567890".chars() {
-        for char in "as".chars() {
-            self.generate_image(char);
-        }
-
-        for window in self.target_windows(&screen) {
+        let mut window_to_image_map = HashMap::new();
+        for (window, key) in self
+            .target_windows(&screen)
+            .iter()
+            .zip("asdfghjklqwertyuiopzxcvbnm1234567890".chars())
+        {
             let new_id = connection.generate_id();
+            let image = self.get_image(key);
 
             xcb::create_window(
                 connection,
@@ -54,8 +56,8 @@ impl<'a> WindowSelector<'a> {
                 root,
                 window.pos.0,
                 window.pos.1,
-                100,
-                100,
+                image.width() as u16,
+                image.height() as u16,
                 0,
                 xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
                 root_visual,
@@ -63,12 +65,17 @@ impl<'a> WindowSelector<'a> {
             );
 
             xcb::map_window(connection, new_id);
+
+            window_to_image_map.insert(new_id, image);
         }
 
         connection.flush();
 
         self.event_source.grab_keyboard();
-        self.event_source.wait_for_event(None);
+        let expose_handler = |event: &xcb::ExposeEvent| {
+            window_to_image_map.get(&event.window());
+        };
+        self.event_source.wait_for_event(&expose_handler);
         self.event_source.ungrab_keyboard();
     }
 
@@ -124,55 +131,70 @@ impl<'a> WindowSelector<'a> {
         result.sort_by_key(|w| w.pos.1);
         result
     }
-    
-    fn generate_image(&self, key: char) {
-        let path = PathBuf::from("/tmp/commando.select.html");
-        let mut file = std::fs::File::create(&path).unwrap(); 
-        write!(
-            file,
-            "{}",
-            html! {
-                : doctype::HTML;
-                html {
-                    head {
-                        style(type="text/css") {
-                            @ for f in self.model.files.iter().filter(|f| f.file_name().unwrap() == "select.css") {
-                                : Raw(std::fs::read_to_string(f).unwrap());
-                            }
-                        }
-                    }
-                    body {
-                        div(id="body") {
-                            : key 
+
+    fn get_image(&self, key: char) -> image::DynamicImage {
+        let html = html! {
+            : doctype::HTML;
+            html {
+                head {
+                    style(type="text/css") {
+                        @ for f in self.model.files.iter().filter(|f| f.file_name().unwrap() == "select.css") {
+                            : Raw(std::fs::read_to_string(f).unwrap());
                         }
                     }
                 }
+                body {
+                    div(id="body") {
+                        : key
+                    }
+                }
             }
-        )
-        .unwrap();
+        };
 
-        {
-            let status = std::process::Command::new("chromium-browser")
+        let path = Self::html_to_image(&html);
+        let bytes = std::fs::read(&path).unwrap();
+        image::load_from_memory_with_format(&bytes, image::ImageFormat::PNG).unwrap()
+    }
+
+    fn html_to_image<T>(html: &T) -> String
+    where
+        T: std::fmt::Display,
+    {
+        let string = html.to_string();
+        let mut hasher = Sha256::new();
+        hasher.input(&string);
+        let image_path = format!("/tmp/commando.{:x}.png", hasher.result());
+
+        if !std::fs::metadata(&image_path).is_ok() {
+            write!(
+                std::fs::File::create("/tmp/commando.html").unwrap(),
+                "{}",
+                string
+            )
+            .unwrap();
+
+            let chromium_status = std::process::Command::new("chromium-browser")
                 .arg("--headless")
-                .arg("--screenshot=/tmp/commando.select.png")
-                .arg("--window-size=256x256")
-                .arg(path.to_str().unwrap())
+                .arg("--screenshot=/tmp/commando.png")
+                .arg("--window-size=2560x1440")
+                .arg("/tmp/commando.html")
                 .status();
-            if let Err(err) = status {
-                eprintln!("command failed with {:?}", err);
+            if let Err(err) = chromium_status {
+                eprintln!("Error creating image from html: {:?}", err);
             }
-        }
-        {
-            let status = std::process::Command::new("convert")
-                .arg("/tmp/commando.select.png")
+
+            let convert_status = std::process::Command::new("convert")
+                .arg("/tmp/commando.png")
                 .arg("-trim")
                 .arg("-shave")
                 .arg("1x1")
-                .arg("/tmp/commando.select.trim.png")
+                .arg(&image_path)
                 .status();
-            if let Err(err) = status {
-                eprintln!("command failed with {:?}", err);
+            if let Err(err) = convert_status {
+                eprintln!("Error creating image from html: {:?}", err);
             }
         }
+
+        image_path
     }
 }

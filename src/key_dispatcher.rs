@@ -14,13 +14,18 @@ impl<'a> KeyDispatcher<'a> {
         scope(|s| {
             let (tx, rx) = crossbeam::channel::bounded(0);
             s.spawn(|_| ActionServer::run(model, rx));
-            KeyDispatcher::new(model, event_source).main_loop(tx).unwrap();
+            KeyDispatcher::new(model, event_source)
+                .main_loop(tx)
+                .unwrap();
         })
         .unwrap();
     }
 
     fn new(model: &'a Model, event_source: &'a EventSource<'a>) -> KeyDispatcher<'a> {
-        KeyDispatcher { model, event_source }
+        KeyDispatcher {
+            model,
+            event_source,
+        }
     }
 
     fn main_loop(&self, tx: Sender<ActionMessage>) -> Result<(), SendError<ActionMessage>> {
@@ -33,7 +38,7 @@ impl<'a> KeyDispatcher<'a> {
                 .map(|(k, _)| k),
         );
 
-        while let Some(key) = self.event_source.wait_for_event(None) {
+        while let Some(key) = self.event_source.wait_for_event(&|_| {}) {
             match self.model.command_bindings.get(&key) {
                 Some(Command::Cancel) => continue,
                 Some(Command::ToggleHelp) => tx.send(ActionMessage::ToggleHelp)?,
@@ -65,7 +70,7 @@ impl<'a> KeyDispatcher<'a> {
     ) -> Result<(), SendError<ActionMessage>> {
         if let Some(definitions) = self.model.definitions.get(mode) {
             tx.send(ActionMessage::Mode(mode.clone()))?;
-            while let Some(key) = self.event_source.wait_for_event(None) {
+            while let Some(key) = self.event_source.wait_for_event(&|_| {}) {
                 match self.model.command_bindings.get(&key) {
                     Some(Command::Cancel) => {
                         self.event_source.ungrab_keyboard();
