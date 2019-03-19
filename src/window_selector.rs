@@ -1,6 +1,6 @@
 use super::{event_source::EventSource, model::*};
-use image::GenericImageView;
 use horrorshow::{append_html, helper::doctype, html, Raw};
+use image::GenericImageView;
 use sha2::{digest::Digest, Sha256};
 use std::{collections::HashMap, io::Write};
 
@@ -41,9 +41,11 @@ impl<'a> WindowSelector<'a> {
         let root_visual = screen.root_visual();
 
         let mut window_to_image_map = HashMap::new();
+        let mut key_to_window_map = HashMap::new();
         for (window, key) in self
             .target_windows(&screen)
             .iter()
+            // TODO: get from config
             .zip("asdfghjklqwertyuiopzxcvbnm1234567890".chars())
         {
             let new_id = connection.generate_id();
@@ -67,15 +69,44 @@ impl<'a> WindowSelector<'a> {
             xcb::map_window(connection, new_id);
 
             window_to_image_map.insert(new_id, image);
+            key_to_window_map.insert(key.to_string(), new_id);
         }
 
         connection.flush();
 
-        self.event_source.grab_keyboard();
         let expose_handler = |event: &xcb::ExposeEvent| {
-            window_to_image_map.get(&event.window());
+            self.draw_image_on_window(
+                window_to_image_map.get(&event.window()).unwrap(),
+                event.window(),
+            );
         };
-        self.event_source.wait_for_event(&expose_handler);
+
+        self.event_source.grab_keyboard();
+        while let Some(key) = self.event_source.wait_for_event(&expose_handler) {
+            match self.model.command_bindings.get(&key) {
+                Some(Command::Cancel) => break,
+                Some(_) => continue,
+                None => {
+                    if key.modifiers() == 0 {
+                        let keysym = self.event_source.key_symbols().get_keysym(key.keycode(), 0);
+                        if keysym != xcb::base::NO_SYMBOL {
+                            let keysym_name = unsafe {
+                                std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
+                                    .to_str()
+                                    .unwrap()
+                            };
+                            match key_to_window_map.get(keysym_name) {
+                                Some(window_id) => {
+                                    println!("{}", window_id);
+                                    break;
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
         self.event_source.ungrab_keyboard();
     }
 
@@ -196,5 +227,27 @@ impl<'a> WindowSelector<'a> {
         }
 
         image_path
+    }
+
+    fn draw_image_on_window(&self, image: &image::DynamicImage, window_id: u32) {
+        let connection = self.connection();
+        let gc_id = connection.generate_id();
+        xcb::xproto::create_gc(connection, gc_id, window_id, &[]);
+        let pixels = image.to_bgra().into_raw();
+        xcb::xproto::put_image(
+            connection,
+            xcb::xproto::IMAGE_FORMAT_Z_PIXMAP as u8,
+            window_id,
+            gc_id,
+            image.width() as u16,
+            image.height() as u16,
+            0,
+            0,
+            0,
+            24,
+            &pixels,
+        );
+        xcb::xproto::free_gc(connection, gc_id);
+        connection.flush();
     }
 }
