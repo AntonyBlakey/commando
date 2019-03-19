@@ -69,7 +69,7 @@ impl<'a> WindowSelector<'a> {
             xcb::map_window(connection, new_id);
 
             window_to_image_map.insert(new_id, image);
-            key_to_window_map.insert(key.to_string(), new_id);
+            key_to_window_map.insert(key.to_string(), window.id);
         }
 
         connection.flush();
