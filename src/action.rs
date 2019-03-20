@@ -97,13 +97,11 @@ impl<'a> ActionServer<'a> {
 
     fn exec(&mut self, command_line: &String) {
         self.hide_help();
-        let status = std::process::Command::new("sh")
+        std::process::Command::new("sh")
             .arg("-c")
             .arg(command_line)
-            .status();
-        if let Err(err) = status {
-            eprintln!("Command {} failed with {:?}", command_line, err);
-        }
+            .spawn()
+            .expect(&format!("Failed to spawn {}", command_line));
     }
 
     fn call(&mut self, command_line: &String) {
