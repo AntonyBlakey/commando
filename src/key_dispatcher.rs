@@ -68,37 +68,40 @@ impl<'a> KeyDispatcher<'a> {
         mode: &DefinitionId,
         tx: &Sender<ActionMessage>,
     ) -> Result<(), SendError<ActionMessage>> {
-        if let Some(definitions) = self.model.definitions.get(mode) {
-            tx.send(ActionMessage::Mode(mode.clone()))?;
-            while let Some(key) = self.event_source.wait_for_event(&|_| {}) {
-                match self.model.command_bindings.get(&key) {
-                    Some(Command::Cancel) => {
-                        self.event_source.ungrab_keyboard();
-                        tx.send(ActionMessage::Cancel)?;
-                        return Ok(());
-                    }
-                    Some(Command::ToggleHelp) => tx.send(ActionMessage::ToggleHelp)?,
-                    None => {
-                        for d in definitions {
-                            // TODO: evaluate definition guard
-                            match d.bindings.get(&key) {
-                                Some(Binding::Exec { exec, .. }) => {
-                                    self.event_source.ungrab_keyboard();
-                                    return tx.send(ActionMessage::Exec(exec.clone()));
+        match self.model.definitions.get(mode) {
+            Some(definitions) => {
+                tx.send(ActionMessage::Mode(mode.clone()))?;
+                while let Some(key) = self.event_source.wait_for_event(&|_| {}) {
+                    match self.model.command_bindings.get(&key) {
+                        Some(Command::Cancel) => {
+                            self.event_source.ungrab_keyboard();
+                            tx.send(ActionMessage::Cancel)?;
+                            return Ok(());
+                        }
+                        Some(Command::ToggleHelp) => tx.send(ActionMessage::ToggleHelp)?,
+                        None => {
+                            for d in definitions {
+                                // TODO: evaluate definition guard
+                                match d.bindings.get(&key) {
+                                    Some(Binding::Exec { exec, .. }) => {
+                                        self.event_source.ungrab_keyboard();
+                                        return tx.send(ActionMessage::Exec(exec.clone()));
+                                    }
+                                    Some(Binding::Call { call, .. }) => {
+                                        tx.send(ActionMessage::Call(call.clone()))?;
+                                        break; // out of the definitions loop;
+                                    }
+                                    Some(Binding::Mode { mode, .. }) => {
+                                        return self.modal_loop(mode, tx);
+                                    }
+                                    None => (),
                                 }
-                                Some(Binding::Call { call, .. }) => {
-                                    tx.send(ActionMessage::Call(call.clone()))?;
-                                    break; // out of the definitions loop;
-                                }
-                                Some(Binding::Mode { mode, .. }) => {
-                                    return self.modal_loop(mode, tx);
-                                }
-                                None => (),
                             }
                         }
                     }
                 }
             }
+            None => self.event_source.ungrab_keyboard(),
         }
 
         Ok(())

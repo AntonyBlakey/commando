@@ -66,13 +66,11 @@ impl<'a> ActionServer<'a> {
 
     fn enter(&mut self) {
         if let Some(command_line) = self.model.handlers.get(&Event::EnterModal) {
-            let status = std::process::Command::new("sh")
+            std::process::Command::new("sh")
                 .arg("-c")
                 .arg(command_line)
-                .status();
-            if let Err(err) = status {
-                eprintln!("command {} failed with {:?}", command_line, err);
-            }
+                .spawn()
+                .expect(&format!("Failed to spawn {}", command_line));
         }
     }
 
@@ -85,13 +83,11 @@ impl<'a> ActionServer<'a> {
         self.definition_id = None;
         self.hide_help();
         if let Some(command_line) = self.model.handlers.get(&Event::ExitModal) {
-            let status = std::process::Command::new("sh")
+            std::process::Command::new("sh")
                 .arg("-c")
                 .arg(command_line)
-                .status();
-            if let Err(err) = status {
-                eprintln!("command {} failed with {:?}", command_line, err);
-            }
+                .spawn()
+                .expect(&format!("Failed to spawn {}", command_line));
         }
     }
 
@@ -105,13 +101,11 @@ impl<'a> ActionServer<'a> {
     }
 
     fn call(&mut self, command_line: &String) {
-        let status = std::process::Command::new("sh")
+        std::process::Command::new("sh")
             .arg("-c")
             .arg(command_line)
-            .status();
-        if let Err(err) = status {
-            eprintln!("Command {} failed with {:?}", command_line, err);
-        }
+            .spawn()
+            .expect(&format!("Failed to spawn {}", command_line));
     }
 
     fn show_help(&mut self) {
