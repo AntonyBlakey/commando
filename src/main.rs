@@ -2,15 +2,15 @@
 
 mod action;
 mod config;
+mod event_source;
 mod help;
 mod key_description;
-mod model;
-mod event_source;
 mod key_dispatcher;
+mod model;
 mod window_selector;
 
-use key_dispatcher::KeyDispatcher;
 use event_source::EventSource;
+use key_dispatcher::KeyDispatcher;
 use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;

@@ -106,10 +106,13 @@ impl HelpEngine {
         let keys: Vec<(&String, &Binding)> = match definition_id {
             None => model.keys.iter().collect(),
             // TODO: check guards on each definition
-            Some(id) => model.definitions[id]
+            Some(id) => match model.definitions.get(id) {
+                Some(def) => def
                 .iter()
                 .flat_map(|d| d.keys.iter())
                 .collect(),
+                None => Vec::new()
+            }
         };
 
         let mut unique_keys: Vec<&(&String, &Binding)> = keys.iter().unique_by(|a| a.0).collect();
