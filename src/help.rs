@@ -194,14 +194,16 @@ impl HelpEngine {
                             }
                         }
                         script(type="text/javascript") {
-                            : "const bindings = [";
+                            @ for f in model.files.iter().filter(|f| f.file_name().unwrap() == "help.js") {
+                                : "\n";
+                                : Raw(std::fs::read_to_string(f).unwrap());
+                            }
+                            : "\n";
+                            : "layout([";
                             @ for group_keys in &all_group_keys {
                                 : format!("{},", group_keys.len());
                             }
-                            : "];";
-                            @ for f in model.files.iter().filter(|f| f.file_name().unwrap() == "help.js") {
-                                : Raw(std::fs::read_to_string(f).unwrap());
-                            }
+                            : "]);";
                         }
                     }
                 }
