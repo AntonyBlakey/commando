@@ -1,3 +1,9 @@
+
+use crate::connection::connection;
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct KeyDescription {
     shift: bool,
@@ -26,11 +32,14 @@ impl KeyDescription {
         }
     }
 
-    pub fn from_key_press_event(event: &xcb::KeyPressEvent) -> KeyDescription {
+    pub fn from_key_press_event(event: &xcb::KeyPressEvent) -> Self {
         KeyDescription::from_keycode_and_state(event.detail(), event.state())
     }
 
-    pub fn from_string(string: &str, syms: &xcb_util::keysyms::KeySymbols) -> Vec<KeyDescription> {
+    pub fn parse(string: &str) -> Vec<Self> {
+        let connection = connection();
+        let key_symbols = xcb_util::keysyms::KeySymbols::new(&connection);
+
         let mut result = Vec::new();
 
         let tokens: Vec<&str> = string.split('-').collect();
@@ -54,9 +63,9 @@ impl KeyDescription {
             let keysym =
                 xkbcommon::xkb::keysym_from_name(keysym_name, xkbcommon::xkb::KEYSYM_NO_FLAGS);
             // TODO: check it's a valid keysym
-            for keycode in syms.get_keycode(keysym) {
-                let keysym_unshifted = syms.get_keysym(keycode, 0);
-                let keysym_shifted = syms.get_keysym(keycode, 1);
+            for keycode in key_symbols.get_keycode(keysym) {
+                let keysym_unshifted = key_symbols.get_keysym(keycode, 0);
+                let keysym_shifted = key_symbols.get_keysym(keycode, 1);
                 let mut kd = KeyDescription {
                     shift: shift,
                     lock: false,
@@ -114,60 +123,66 @@ impl KeyDescription {
         self.keycode
     }
 
-    //     pub fn pretty_string(&self, syms: &xcb_util::keysyms::KeySymbols) -> String {
-    //         let f1 = {
-    //             let keysym = syms.get_keysym(self.keycode, 0);
-    //             if keysym == xcb::base::NO_SYMBOL {
-    //                 None
-    //             } else {
-    //                 let keysym_name = unsafe {
-    //                     std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
-    //                         .to_str()
-    //                         .unwrap()
-    //                 };
-    //                 Some(format!(
-    //                     "{}{}{}{}{}{}{}{}{}",
-    //                     if self.mod1 { "alt-" } else { "" },
-    //                     if self.mod2 { "mod2-" } else { "" },
-    //                     if self.mod3 { "hyper-" } else { "" },
-    //                     if self.mod4 { "super-" } else { "" },
-    //                     if self.mod5 { "mod5-" } else { "" },
-    //                     if self.control { "control-" } else { "" },
-    //                     if self.lock { "lock-" } else { "" },
-    //                     if self.shift { "shift-" } else { "" },
-    //                     keysym_name
-    //                 ))
-    //             }
-    //         };
-    //         let f2 = {
-    //             let keysym = syms.get_keysym(self.keycode, 1);
-    //             if !self.shift || keysym == xcb::base::NO_SYMBOL {
-    //                 None
-    //             } else {
-    //                 let keysym_name = unsafe {
-    //                     std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
-    //                         .to_str()
-    //                         .unwrap()
-    //                 };
-    //                 Some(format!(
-    //                     "{}{}{}{}{}{}{}{}",
-    //                     if self.mod1 { "alt-" } else { "" },
-    //                     if self.mod2 { "mod2-" } else { "" },
-    //                     if self.mod3 { "hyper-" } else { "" },
-    //                     if self.mod4 { "super-" } else { "" },
-    //                     if self.mod5 { "mod5-" } else { "" },
-    //                     if self.control { "control-" } else { "" },
-    //                     if self.lock { "lock-" } else { "" },
-    //                     keysym_name,
-    //                 ))
-    //             }
-    //         };
+}
 
-    //         match (f1, f2) {
-    //             (Some(a), Some(b)) => format!("{} / {}", a, b),
-    //             (Some(a), None) => a,
-    //             (None, Some(b)) => b,
-    //             (None, None) => String::from("Invalid"),
-    //         }
-    //     }
+impl Display for KeyDescription {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
+        let connection = connection();
+        let key_symbols = xcb_util::keysyms::KeySymbols::new(&connection);
+
+        let f1 = {
+            let keysym = key_symbols.get_keysym(self.keycode, 0);
+            if keysym == xcb::base::NO_SYMBOL {
+                None
+            } else {
+                let keysym_name = unsafe {
+                    std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
+                        .to_str()
+                        .unwrap()
+                };
+                Some(format!(
+                    "{}{}{}{}{}{}{}{}{}",
+                    if self.mod1 { "alt-" } else { "" },
+                    if self.mod2 { "mod2-" } else { "" },
+                    if self.mod3 { "hyper-" } else { "" },
+                    if self.mod4 { "super-" } else { "" },
+                    if self.mod5 { "mod5-" } else { "" },
+                    if self.control { "control-" } else { "" },
+                    if self.lock { "lock-" } else { "" },
+                    if self.shift { "shift-" } else { "" },
+                    keysym_name
+                ))
+            }
+        };
+        let f2 = {
+            let keysym = key_symbols.get_keysym(self.keycode, 1);
+            if !self.shift || keysym == xcb::base::NO_SYMBOL {
+                None
+            } else {
+                let keysym_name = unsafe {
+                    std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
+                        .to_str()
+                        .unwrap()
+                };
+                Some(format!(
+                    "{}{}{}{}{}{}{}{}",
+                    if self.mod1 { "alt-" } else { "" },
+                    if self.mod2 { "mod2-" } else { "" },
+                    if self.mod3 { "hyper-" } else { "" },
+                    if self.mod4 { "super-" } else { "" },
+                    if self.mod5 { "mod5-" } else { "" },
+                    if self.control { "control-" } else { "" },
+                    if self.lock { "lock-" } else { "" },
+                    keysym_name,
+                ))
+            }
+        };
+
+        match (f1, f2) {
+            (Some(a), Some(b)) => write!(formatter, "{} / {}", a, b),
+            (Some(a), None) => write!(formatter, "{}", a),
+            (None, Some(b)) => write!(formatter, "{}", b),
+            (None, None) => write!(formatter, "Invalid Key Description"),
+        }
+    }
 }

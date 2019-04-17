@@ -1,4 +1,4 @@
-use super::{config, event_source::EventSource, key_description::KeyDescription};
+use crate::{config, key_description::KeyDescription};
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -25,13 +25,11 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(files: Vec<PathBuf>, event_source: &EventSource) -> Model {
+    pub fn new(files: Vec<PathBuf>) -> Model {
         let mut model = Model {
             files,
             ..Default::default()
         };
-
-        let keysyms = event_source.key_symbols();
 
         let definitions = model
             .files
@@ -55,7 +53,7 @@ impl Model {
                     model.commands = commands;
                     for (c, ks) in &model.commands {
                         for k in ks {
-                            for d in KeyDescription::from_string(k, keysyms) {
+                            for d in KeyDescription::parse(k) {
                                 model.command_bindings.insert(d, *c);
                             }
                         }
@@ -63,7 +61,7 @@ impl Model {
                     // keys has to be converted to a map to bindings
                     for (k, v) in &keys {
                         let binding = Binding::new(v, None);
-                        for d in KeyDescription::from_string(k, keysyms) {
+                        for d in KeyDescription::parse(k) {
                             model.bindings.insert(d, binding.clone());
                         }
                         model.keys.insert(k.clone(), binding);
@@ -75,13 +73,21 @@ impl Model {
                     keys,
                     groups,
                 } => {
-                    let def = Definition::new(&guard, &keys, &groups, event_source);
-                    match model.definitions.get_mut(&path) {
-                        Some(vec) => {
-                            vec.push(def);
-                        }
+                    let def = Definition::new(&guard, &keys, &groups);
+                    match path {
+                        Some(path) => match model.definitions.get_mut(&path) {
+                            Some(vec) => {
+                                vec.push(def);
+                            }
+                            None => {
+                                model.definitions.insert(path.clone(), vec![def]);
+                            }
+                        },
                         None => {
-                            model.definitions.insert(path.clone(), vec![def]);
+                            // TODO: deal with the guard at the top level
+                            // - maybe guard belongs on each binding?
+                            model.bindings.extend(def.bindings);
+                            model.keys.extend(def.keys);
                         }
                     };
                 }
@@ -104,10 +110,7 @@ impl Definition {
         from_guard: &config::Guard,
         from_keys: &config::KeyMap,
         from_groups: &Vec<config::GroupDefinition>,
-        event_source: &EventSource,
     ) -> Definition {
-        let keysyms = event_source.key_symbols();
-
         let mut definition: Definition = Default::default();
 
         definition.guard.class = from_guard.class.clone();
@@ -116,7 +119,7 @@ impl Definition {
 
         for (k, v) in from_keys {
             let binding = Binding::new(v, None);
-            for d in KeyDescription::from_string(k, keysyms) {
+            for d in KeyDescription::parse(k) {
                 definition.bindings.insert(d, binding.clone());
             }
             definition.keys.insert(k.clone(), binding);
@@ -124,7 +127,7 @@ impl Definition {
         for g in from_groups {
             for (k, v) in &g.keys {
                 let binding = Binding::new(&v, Some(g.label.clone()));
-                for d in KeyDescription::from_string(&k, keysyms) {
+                for d in KeyDescription::parse(&k) {
                     definition.bindings.insert(d, binding.clone());
                 }
                 definition.keys.insert(k.clone(), binding);

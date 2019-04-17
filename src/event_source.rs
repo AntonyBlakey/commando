@@ -1,21 +1,17 @@
-use super::key_description::KeyDescription;
+use crate::{connection::connection, key_description::KeyDescription};
 use std::{cell::RefCell, collections::HashSet};
 
-pub struct EventSource<'a> {
-    connection: &'a xcb::Connection,
-    screen_number: i32,
+pub struct EventSource {
     modifier_keycodes: HashSet<xcb::xproto::Keycode>,
-    key_symbols: xcb_util::keysyms::KeySymbols<'a>,
     pushed_back_event: RefCell<Option<xcb::base::GenericEvent>>, // RefCell because we need interior mutability
 }
 
-impl<'a> EventSource<'a> {
-    pub fn new(connection: &'a xcb::Connection, screen_number: i32) -> Self {
+impl EventSource {
+    pub fn new() -> Self {
+        let connection = connection();
         Self {
-            connection,
-            screen_number,
             modifier_keycodes: {
-                let mmc = xcb::xproto::get_modifier_mapping(connection);
+                let mmc = xcb::xproto::get_modifier_mapping(&connection);
                 let mm = mmc.get_reply().unwrap();
                 let width = mm.keycodes_per_modifier();
                 let keycodes = mm.keycodes();
@@ -30,58 +26,48 @@ impl<'a> EventSource<'a> {
                 }
                 seen
             },
-            key_symbols: xcb_util::keysyms::KeySymbols::new(connection),
             pushed_back_event: Default::default(),
         }
     }
 
-    pub fn key_symbols(&self) -> &xcb_util::keysyms::KeySymbols {
-        &self.key_symbols
-    }
-
-    pub fn grab_keys<T>(&self, descriptions: T)
+    pub fn grab_keys<'a, T>(&self, descriptions: T)
     where
         T: Iterator<Item = &'a KeyDescription>,
     {
+        let connection = connection();
+        let root = connection.get_setup().roots().nth(0).unwrap().root();
         for desc in descriptions {
             xcb::xproto::grab_key(
-                self.connection,
+                &connection,
                 false,
-                self.screen().root(),
+                root,
                 desc.modifiers(),
                 desc.keycode(),
                 xcb::GRAB_MODE_ASYNC as u8,
                 xcb::GRAB_MODE_SYNC as u8,
             );
         }
-        self.connection.flush();
+        connection.flush();
     }
 
-    // pub fn ungrab_keys(&self) {
-    //     xcb::xproto::ungrab_key(
-    //         self.connection,
-    //         xcb::GRAB_ANY as u8,
-    //         self.screen().root(),
-    //         xcb::MOD_MASK_ANY as u16,
-    //     );
-    //     self.connection.flush();
-    // }
-
     pub fn grab_keyboard(&self) {
+        let connection = connection();
+        let root = connection.get_setup().roots().nth(0).unwrap().root();
         xcb::xproto::grab_keyboard(
-            self.connection,
+            &connection,
             false,
-            self.screen().root(),
+            root,
             xcb::CURRENT_TIME,
             xcb::GRAB_MODE_ASYNC as u8,
             xcb::GRAB_MODE_SYNC as u8,
         );
-        self.connection.flush();
+        connection.flush();
     }
 
     pub fn ungrab_keyboard(&self) {
-        xcb::xproto::ungrab_keyboard(self.connection, xcb::CURRENT_TIME);
-        self.connection.flush();
+        let connection = connection();
+        xcb::xproto::ungrab_keyboard(&connection, xcb::CURRENT_TIME);
+        connection.flush();
     }
 
     pub fn wait_for_event<F>(&self, expose_handler: &F) -> Option<KeyDescription>
@@ -103,10 +89,6 @@ impl<'a> EventSource<'a> {
         }
 
         return None;
-    }
-
-    pub fn connection(&self) -> &'a xcb::Connection {
-        &self.connection
     }
 
     fn wait_for_event_release<F>(
@@ -189,7 +171,7 @@ impl<'a> EventSource<'a> {
         }
 
         self.allow_events();
-        self.connection.poll_for_event()
+        connection().poll_for_event()
     }
 
     fn wait_for_raw_event(&self) -> Option<xcb::base::GenericEvent> {
@@ -199,7 +181,7 @@ impl<'a> EventSource<'a> {
         }
 
         self.allow_events();
-        self.connection.wait_for_event()
+        connection().wait_for_event()
     }
 
     fn pushback_raw_event(&self, event: xcb::base::GenericEvent) {
@@ -207,19 +189,12 @@ impl<'a> EventSource<'a> {
     }
 
     fn allow_events(&self) {
+        let connection = connection();
         xcb::xproto::allow_events(
-            self.connection,
+            &connection,
             xcb::ALLOW_SYNC_KEYBOARD as u8,
             xcb::CURRENT_TIME,
         );
-        self.connection.flush();
-    }
-
-    fn screen(&self) -> xcb::Screen {
-        self.connection
-            .get_setup()
-            .roots()
-            .nth(self.screen_number as usize)
-            .unwrap()
+        connection.flush();
     }
 }

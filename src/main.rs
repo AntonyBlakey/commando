@@ -7,14 +7,13 @@ mod help;
 mod key_description;
 mod key_dispatcher;
 mod model;
-mod window_selector;
+mod connection;
 
 use event_source::EventSource;
 use key_dispatcher::KeyDispatcher;
 use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use window_selector::WindowSelector;
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -30,10 +29,6 @@ enum Command {
     /// Listen for key commands, showing help as appropriate
     #[structopt(name = "listen")]
     Listen(ListenCommand),
-
-    /// Select a window by showing key overlays
-    #[structopt(name = "select")]
-    Select(SelectCommand),
 }
 
 #[derive(Debug, StructOpt)]
@@ -43,31 +38,16 @@ struct ListenCommand {
     config: Vec<PathBuf>,
 }
 
-#[derive(Debug, StructOpt)]
-struct SelectCommand {
-    /// Files containing configuration
-    #[structopt(parse(from_os_str))]
-    config: Vec<PathBuf>,
-}
-
 fn main() {
     let args = Args::from_args();
     args.verbosity.setup_env_logger("commando").unwrap();
 
-    let (connection, screen_number) = xcb::Connection::connect(None).unwrap();
-
     match args.command {
         Command::Listen(ListenCommand { config }) => {
-            let event_source = EventSource::new(&connection, screen_number);
             let files = files_from_config(&config);
-            let model = Model::new(files, &event_source);
+            let model = Model::new(files);
+            let event_source = EventSource::new();
             KeyDispatcher::run(&model, &event_source);
-        }
-        Command::Select(SelectCommand { config }) => {
-            let event_source = EventSource::new(&connection, screen_number);
-            let files = files_from_config(&config);
-            let model = Model::new(files, &event_source);
-            WindowSelector::run(&model, &event_source);
         }
     }
 }

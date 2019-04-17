@@ -6,11 +6,11 @@ use crossbeam::{
 
 pub struct KeyDispatcher<'a> {
     model: &'a Model,
-    event_source: &'a EventSource<'a>,
+    event_source: &'a EventSource,
 }
 
 impl<'a> KeyDispatcher<'a> {
-    pub fn run(model: &'a Model, event_source: &'a EventSource<'a>) {
+    pub fn run(model: &'a Model, event_source: &EventSource) {
         scope(|s| {
             let (tx, rx) = crossbeam::channel::bounded(0);
             s.spawn(|_| ActionServer::run(model, rx));
@@ -21,7 +21,7 @@ impl<'a> KeyDispatcher<'a> {
         .unwrap();
     }
 
-    fn new(model: &'a Model, event_source: &'a EventSource<'a>) -> KeyDispatcher<'a> {
+    fn new(model: &'a Model, event_source: &'a EventSource) -> KeyDispatcher<'a> {
         KeyDispatcher {
             model,
             event_source,

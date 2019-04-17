@@ -40,7 +40,7 @@ pub enum Definition {
         handlers: HashMap<Event, String>,
     },
     Linear {
-        path: String,
+        path: Option<String>,
         #[serde(default)]
         guard: Guard,
         #[serde(default)]
