@@ -1,13 +1,14 @@
-#![feature(inner_deref, type_alias_enum_variants)]
+#![feature(inner_deref, type_alias_enum_variants, iter_copied)]
 
 mod action;
 mod config;
+mod connection;
 mod event_source;
 mod help;
 mod key_description;
 mod key_dispatcher;
 mod model;
-mod connection;
+mod user;
 
 use event_source::EventSource;
 use key_dispatcher::KeyDispatcher;
@@ -41,6 +42,13 @@ struct ListenCommand {
 fn main() {
     let args = Args::from_args();
     args.verbosity.setup_env_logger("commando").unwrap();
+
+    eprintln!("{:?}", key!(Cmd + Opt + q));
+    eprintln!("{:?}", key!(Cmd + 0));
+    eprintln!("{:?}", key!(Cmd + backslash));
+    eprintln!("{:?}", key!(Escape));
+    eprintln!("{:?}", key!(Ctrl + g));
+    eprintln!("{:?}", key!(Command));
 
     match args.command {
         Command::Listen(ListenCommand { config }) => {

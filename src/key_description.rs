@@ -1,4 +1,3 @@
-
 use crate::connection::connection;
 use std::{
     fmt,
@@ -122,7 +121,6 @@ impl KeyDescription {
     pub fn keycode(&self) -> xcb::xproto::Keycode {
         self.keycode
     }
-
 }
 
 impl Display for KeyDescription {
