@@ -1,4 +1,4 @@
-use crate::{config, key_description::KeyDescription};
+use crate::{config, keystroke::Keystroke};
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -19,9 +19,9 @@ pub struct Model {
 
     pub definitions: HashMap<DefinitionId, Vec<Definition>>,
     pub handlers: HashMap<Event, String>,
-    pub command_bindings: HashMap<KeyDescription, Command>,
+    pub command_bindings: HashMap<Keystroke, Command>,
 
-    pub bindings: HashMap<KeyDescription, Binding>,
+    pub bindings: HashMap<Keystroke, Binding>,
 }
 
 impl Model {
@@ -53,7 +53,7 @@ impl Model {
                     model.commands = commands;
                     for (c, ks) in &model.commands {
                         for k in ks {
-                            for d in KeyDescription::parse(k) {
+                            for d in Keystroke::parse(k) {
                                 model.command_bindings.insert(d, *c);
                             }
                         }
@@ -61,7 +61,7 @@ impl Model {
                     // keys has to be converted to a map to bindings
                     for (k, v) in &keys {
                         let binding = Binding::new(v, None);
-                        for d in KeyDescription::parse(k) {
+                        for d in Keystroke::parse(k) {
                             model.bindings.insert(d, binding.clone());
                         }
                         model.keys.insert(k.clone(), binding);
@@ -102,7 +102,7 @@ impl Model {
 pub struct Definition {
     pub guard: Guard,
     pub keys: HashMap<KeySpec, Binding>,
-    pub bindings: HashMap<KeyDescription, Binding>,
+    pub bindings: HashMap<Keystroke, Binding>,
 }
 
 impl Definition {
@@ -119,7 +119,7 @@ impl Definition {
 
         for (k, v) in from_keys {
             let binding = Binding::new(v, None);
-            for d in KeyDescription::parse(k) {
+            for d in Keystroke::parse(k) {
                 definition.bindings.insert(d, binding.clone());
             }
             definition.keys.insert(k.clone(), binding);
@@ -127,7 +127,7 @@ impl Definition {
         for g in from_groups {
             for (k, v) in &g.keys {
                 let binding = Binding::new(&v, Some(g.label.clone()));
-                for d in KeyDescription::parse(&k) {
+                for d in Keystroke::parse(&k) {
                     definition.bindings.insert(d, binding.clone());
                 }
                 definition.keys.insert(k.clone(), binding);

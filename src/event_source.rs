@@ -1,4 +1,4 @@
-use crate::{connection::connection, key_description::KeyDescription};
+use crate::{connection::connection, keystroke::Keystroke};
 use std::{cell::RefCell, collections::HashSet};
 
 pub struct EventSource {
@@ -32,7 +32,7 @@ impl EventSource {
 
     pub fn grab_keys<'a, T>(&self, descriptions: T)
     where
-        T: Iterator<Item = &'a KeyDescription>,
+        T: Iterator<Item = &'a Keystroke>,
     {
         let connection = connection();
         let root = connection.get_setup().roots().nth(0).unwrap().root();
@@ -70,7 +70,7 @@ impl EventSource {
         connection.flush();
     }
 
-    pub fn wait_for_event<F>(&self, expose_handler: &F) -> Option<KeyDescription>
+    pub fn wait_for_event<F>(&self, expose_handler: &F) -> Option<Keystroke>
     where
         F: Fn(&xcb::ExposeEvent),
     {
@@ -95,7 +95,7 @@ impl EventSource {
         &self,
         press_event: &xcb::KeyPressEvent,
         expose_handler: &F,
-    ) -> Option<KeyDescription>
+    ) -> Option<Keystroke>
     where
         F: Fn(&xcb::ExposeEvent),
     {
@@ -127,7 +127,7 @@ impl EventSource {
                         }
                         self.pushback_raw_event(next_event);
                     }
-                    return Some(KeyDescription::from_key_press_event(&press_event));
+                    return Some(press_event.into());
                 }
                 xcb::KEY_PRESS => {
                     self.wait_for_cancelled_key_release(press_event, expose_handler);

@@ -5,16 +5,18 @@ mod config;
 mod connection;
 mod event_source;
 mod help;
-mod key_description;
-mod key_dispatcher;
+mod keystroke;
 mod model;
-mod user;
+mod key_dispatcher;
+
 
 use event_source::EventSource;
-use key_dispatcher::KeyDispatcher;
+use itertools::Itertools;
 use model::Model;
+use key_dispatcher::KeyDispatcher;
 use std::path::PathBuf;
 use structopt::StructOpt;
+
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -43,12 +45,11 @@ fn main() {
     let args = Args::from_args();
     args.verbosity.setup_env_logger("commando").unwrap();
 
-    eprintln!("{:?}", key!(Cmd + Opt + q));
-    eprintln!("{:?}", key!(Cmd + 0));
-    eprintln!("{:?}", key!(Cmd + backslash));
-    eprintln!("{:?}", key!(Escape));
-    eprintln!("{:?}", key!(Ctrl + g));
-    eprintln!("{:?}", key!(Command));
+    eprintln!("[{}]", key!(Cmd + 0).iter().format(", "));
+    eprintln!("[{}]", key!(Cmd + backslash).iter().format(", "));
+    eprintln!("[{}]", key!(Escape).iter().format(", "));
+    eprintln!("[{}]", key!(Ctrl + g).iter().format(", "));
+    eprintln!("[{}]", key!(Command).iter().format(", "));
 
     match args.command {
         Command::Listen(ListenCommand { config }) => {
