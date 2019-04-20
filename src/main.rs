@@ -1,22 +1,21 @@
-#![feature(inner_deref, type_alias_enum_variants, iter_copied)]
+#![feature(inner_deref, type_alias_enum_variants, iter_copied, trait_alias)]
 
 mod action;
 mod config;
 mod connection;
 mod event_source;
 mod help;
+mod key_dispatcher;
 mod keystroke;
 mod model;
-mod key_dispatcher;
-
+mod root;
 
 use event_source::EventSource;
 use itertools::Itertools;
-use model::Model;
 use key_dispatcher::KeyDispatcher;
+use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;
-
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -45,11 +44,7 @@ fn main() {
     let args = Args::from_args();
     args.verbosity.setup_env_logger("commando").unwrap();
 
-    eprintln!("[{}]", key!(Cmd + 0).iter().format(", "));
-    eprintln!("[{}]", key!(Cmd + backslash).iter().format(", "));
-    eprintln!("[{}]", key!(Escape).iter().format(", "));
-    eprintln!("[{}]", key!(Ctrl + g).iter().format(", "));
-    eprintln!("[{}]", key!(Command).iter().format(", "));
+    root::config();
 
     match args.command {
         Command::Listen(ListenCommand { config }) => {

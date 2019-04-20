@@ -1,0 +1,17 @@
+[
+  {
+    path: "window-manager/launch",
+    keys: {
+      t: { label: "Terminal", command: "alacritty" },
+    }
+  },
+  {
+    path: "root",
+    guard: {
+      class: "^Alacritty$"
+    },
+    keys: {
+      c: { label: "Clear", command: "" }
+    }
+  }
+]

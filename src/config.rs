@@ -35,7 +35,6 @@ pub enum Event {
 #[serde(untagged)]
 pub enum Definition {
     Root {
-        keys: KeyMap,
         commands: HashMap<Command, Vec<String>>,
         handlers: HashMap<Event, String>,
     },

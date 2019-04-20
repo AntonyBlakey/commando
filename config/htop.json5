@@ -1,0 +1,8 @@
+[
+  {
+    path: "window-manager/launch",
+    keys: {
+      h: { label: "htop", command: "alacritty -e htop" },
+    }
+  },
+]

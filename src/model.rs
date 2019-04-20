@@ -44,11 +44,7 @@ impl Model {
 
         for def in definitions {
             match def {
-                config::Definition::Root {
-                    keys,
-                    commands,
-                    handlers,
-                } => {
+                config::Definition::Root { commands, handlers } => {
                     model.handlers = handlers;
                     model.commands = commands;
                     for (c, ks) in &model.commands {
@@ -57,14 +53,6 @@ impl Model {
                                 model.command_bindings.insert(d, *c);
                             }
                         }
-                    }
-                    // keys has to be converted to a map to bindings
-                    for (k, v) in &keys {
-                        let binding = Binding::new(v, None);
-                        for d in Keystroke::parse(k) {
-                            model.bindings.insert(d, binding.clone());
-                        }
-                        model.keys.insert(k.clone(), binding);
                     }
                 }
                 config::Definition::Linear {
@@ -84,8 +72,6 @@ impl Model {
                             }
                         },
                         None => {
-                            // TODO: deal with the guard at the top level
-                            // - maybe guard belongs on each binding?
                             model.bindings.extend(def.bindings);
                             model.keys.extend(def.keys);
                         }

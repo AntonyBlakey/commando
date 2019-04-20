@@ -7,7 +7,8 @@
       "cmd-h": { label: "Decrease Ratio", command: "" },
       "cmd-l": { label: "Increase Ratio", command: "" },
       "cmd-shift-h": { label: "Decrease Count", command: "" },
-      "cmd-shift-plus": { label: "Increase Count", command: "" }
+      "cmd-shift-plus": { label: "Increase Count", command: "" },
+      "cmd-r": { label: "Launch", mode: "window-manager/launch" }
     },
     groups: [
       {
@@ -44,8 +45,8 @@
           "cmd-shift-8": { label: "To Space 8", command: "" },
           "cmd-shift-9": { label: "To Space 9", command: "" },
           "cmd-shift-0": { label: "To …", command: "" },
-          "cmd-shift-opt-0": { label: "Swap …", command: "" },
-          "cmd-opt-0": { label: "Pull …", command: "" }
+          "cmd-shift-opt-0": { label: "Swap With …", command: "" },
+          "cmd-opt-0": { label: "Pull To Head …", command: "" }
         }
       }
     ]

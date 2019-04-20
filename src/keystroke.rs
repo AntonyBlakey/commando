@@ -6,25 +6,14 @@ use std::{
 
 #[macro_export]
 macro_rules! key {
-
-    // This is the "most general" formulation. Leave it here for my future reference.
-
-    // (@modifier $v:ident $head:tt) => { $v.push(stringify!($head)) }; // Modifiers
-    // (@key $v:ident $tail:tt) => { $v.push(stringify!($tail)) }; // Key
-    // (@decompose $v:ident $tail:tt) => { key!(@key $v $tail) };
-    // (@decompose $v:ident $head:tt $($tail:tt)+) => { key!(@modifier $v $head); key!(@decompose $v $($tail)+); };
-    // (@len $len:literal $tail:tt) => { $len + 1 };
-    // (@len $len:literal $head:tt $($tail:tt)+) => { key!(@len ($len + 1) $($tail)+) };
-    // ($head:tt $(+ $tail:tt)*) => {{ let mut result = Vec::with_capacity(key!(@len 0 $head $($tail)*)); key!(@decompose result $head $($tail)*); result }};
-
     // The unfolding of the modifier sequence is required to get around a weakness in Rust's macro pattern matching
-    (@m $($m:ident)*) => { [ $(stringify!($m)),* ] };
-    ($key:tt) => { keystroke::Keystroke::make(&key!(@m), stringify!($key)) };
-    ($m1:ident + $key:tt) => { keystroke::Keystroke::make(&key!(@m $m1), stringify!($key)) };
-    ($m1:ident + $m2:ident + $key:tt) => { keystroke::Keystroke::make(&key!(@m $m1 $m2), stringify!($key)) };
-    ($m1:ident + $m2:ident + $m3:ident + $key:tt) => { keystroke::Keystroke::make(&key!(@m $m1 $m2 $m3), stringify!($key)) };
-    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $key:tt) => { keystroke::Keystroke::make(&key!(@m $m1 $m2 $m3 $m4), stringify!($key)) };
-    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $m5:ident + $key:tt) => { keystroke::Keystroke::make(&key!(@m $m1 $m2 $m3 $m4 $m5), stringify!($key)) };
+    (@m $($m:ident)* + $key:tt) => { keystroke::Keystroke::make(&[ $(stringify!($m)),*], stringify!($key)) };
+    ($key:tt) => { key!(@m + $key) };
+    ($m1:ident + $key:tt) => { key!(@m $m1 + $key) };
+    ($m1:ident + $m2:ident + $key:tt) => { key!(@m $m1 $m2 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $key:tt) => { key!(@m $m1 $m2 $m3 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m4 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $m5:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m3 $m5 + $key) };
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -34,6 +23,12 @@ pub struct Keystroke {
 }
 
 impl Keystroke {
+    pub fn make_raw(tokens: &[&str]) -> Vec<Self> {
+        match tokens.split_last() {
+            Some((key, modifiers)) => Self::make(modifiers, key),
+            None => Default::default(),
+        }
+    }
     pub fn make(modifiers: &[&str], key: &str) -> Vec<Self> {
         match key {
             // Alternate names for modifier keys
@@ -153,7 +148,6 @@ impl From<&xcb::KeyPressEvent> for Keystroke {
     }
 }
 
-
 impl Display for Keystroke {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
         let connection = connection();
@@ -176,32 +170,32 @@ impl Display for Keystroke {
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
                         "mod2-"
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_3  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0 {
                         "hyper-"
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_4  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_4 as u16 != 0 {
                         "super-"
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_5  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0 {
                         "mod5-"
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_CONTROL  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_CONTROL as u16 != 0 {
                         "control-"
                     } else {
                         ""
                     },
-                    if self.modifiers & xcb::KEY_BUT_MASK_SHIFT  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_SHIFT as u16 != 0 {
                         "shift-"
                     } else {
                         ""
@@ -212,7 +206,9 @@ impl Display for Keystroke {
         };
         let f2 = {
             let keysym = key_symbols.get_keysym(self.keycode, 1);
-            if !self.modifiers & xcb::KEY_BUT_MASK_SHIFT as u16 != 0 || keysym == xcb::base::NO_SYMBOL {
+            if !self.modifiers & xcb::KEY_BUT_MASK_SHIFT as u16 != 0
+                || keysym == xcb::base::NO_SYMBOL
+            {
                 None
             } else {
                 let keysym_name = unsafe {
@@ -222,7 +218,7 @@ impl Display for Keystroke {
                 };
                 Some(format!(
                     "{}{}{}{}{}{}{}",
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1  as u16!= 0 {
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
                         "alt-"
                     } else {
                         ""

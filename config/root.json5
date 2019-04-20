@@ -1,17 +1,22 @@
 [
   {
-    commands: {
-      Cancel: ["Escape", "ctrl-g"],
-      ToggleHelp: ["cmd-question"],
-    },
     handlers: {
-      ShowHelp: 'commando_show_help.sh',
-      HideHelp: 'commando_hide_help.sh',
+      ShowHelp: "commando_show_help.sh",
+      HideHelp: "commando_hide_help.sh",
       EnterModal: 'echo "** ENTER"',
-      ExitModal: 'echo "** EXIT"',
-    },
+      ExitModal: 'echo "** EXIT"'
+    }
+  },
+  {
+    path: "global",
+    Escape: { label: "Cancel", command: "ceramic:cancel" },
+    "ctrl-g": { label: "Cancel", command: "ceramic:cancel" },
+    "cmd-question": { label: "Toggle Help", command: "ceramic:toggle-help" }
+  },
+  {
     keys: {
-      "F35": { label: "Contextual", mode: "root" },
+      path: "root",
+      Cmd: { label: "Contextual", mode: "root" }
     }
   }
 ]
