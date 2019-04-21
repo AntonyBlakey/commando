@@ -7,7 +7,7 @@ use std::{
 #[macro_export]
 macro_rules! key {
     // The unfolding of the modifier sequence is required to get around a weakness in Rust's macro pattern matching
-    (@m $($m:ident)* + $key:tt) => { keystroke::Keystroke::make(&[ $(stringify!($m)),*], stringify!($key)) };
+    (@m $($m:ident)* + $key:tt) => { $crate::keystroke::Keystroke::make(&[ $(stringify!($m)),*], stringify!($key)) };
     ($key:tt) => { key!(@m + $key) };
     ($m1:ident + $key:tt) => { key!(@m $m1 + $key) };
     ($m1:ident + $m2:ident + $key:tt) => { key!(@m $m1 $m2 + $key) };

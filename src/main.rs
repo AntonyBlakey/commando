@@ -1,4 +1,11 @@
 #![feature(inner_deref, type_alias_enum_variants, iter_copied, trait_alias)]
+#![recursion_limit="128"]
+
+#[macro_use]
+mod root;
+
+#[macro_use]
+mod keystroke;
 
 mod action;
 mod config;
@@ -6,16 +13,15 @@ mod connection;
 mod event_source;
 mod help;
 mod key_dispatcher;
-mod keystroke;
 mod model;
-mod root;
+mod ceramic;
 
 use event_source::EventSource;
-use itertools::Itertools;
 use key_dispatcher::KeyDispatcher;
 use model::Model;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use root::*;
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -44,7 +50,7 @@ fn main() {
     let args = Args::from_args();
     args.verbosity.setup_env_logger("commando").unwrap();
 
-    root::config();
+    config();
 
     match args.command {
         Command::Listen(ListenCommand { config }) => {
@@ -68,4 +74,23 @@ fn files_from_config(paths: &[PathBuf]) -> Vec<PathBuf> {
     }
 
     result
+}
+
+fn config() {
+
+  let mut key_bindings = KeyBindings::new();
+
+  key_bindings.extend_with(&bindings!(
+    global = {
+      Escape   => { "Cancel" cancel }
+      Ctrl + g => { "Cancel" cancel }
+      Cmd + ?  => { "Toggle Help" toggle help }
+    }
+    root = {
+      Command => { "Application" => application }
+    }
+  ));
+
+  ceramic::config(&mut key_bindings);
+
 }
