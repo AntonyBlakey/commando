@@ -1,17 +1,17 @@
-use super::root::*;
+use super::model::*;
 
-pub fn config(key_bindings: &mut KeyBindings) {
-    key_bindings.extend_with(&bindings! {
-        root = {
+pub fn extend_model(model: &mut Model) {
+    model.extend_with(&bindings! {
+        root {
             Cmd + space => { "Cycle Layout" {} }
             Cmd + Opt + q => { "Exit" {} }
             Cmd + Backspace => { "Close Window" {} }
-            Cmd + h => { "Decrease Ratio" {} }
-            Cmd + l => { "Increase Ratio" {} }
-            Cmd + Shift + h => { "Decrease Count" {} }
-            Cmd + Shift + plus => { "Increase Count" {} }
+            Cmd + minus => { "Decrease Ratio" {} }
+            Cmd + plus => { "Increase Ratio" {} }
+            Cmd + Opt + minus => { "Decrease Count" {} }
+            Cmd + Opt + plus => { "Increase Count" {} }
             Cmd + r => { "Launch" => window_manager::launch }
-            group "Focus" = {
+            group "Focus" {
                 Cmd + Tab => { "Next" {} }
                 Cmd + Shift + Tab => { "Previous" {} }
                 Cmd + j => { "Next" {} }
@@ -27,7 +27,7 @@ pub fn config(key_bindings: &mut KeyBindings) {
                 Cmd + 9 => { "Space 9" {} }
                 Cmd + 0 => { "Select …" {} }
             }
-            group "Move" = {
+            group "Move" {
                 Cmd + Shift + j => { "Forward" {} }
                 Cmd + Shift + k => { "Backward" {} }
                 Cmd + Shift + 1 => { "To Space 1" {} }

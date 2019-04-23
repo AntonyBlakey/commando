@@ -1,20 +1,8 @@
-use crate::connection::connection;
+use super::connection::connection;
 use std::{
     fmt,
     fmt::{Display, Formatter},
 };
-
-#[macro_export]
-macro_rules! key {
-    // The unfolding of the modifier sequence is required to get around a weakness in Rust's macro pattern matching
-    (@m $($m:ident)* + $key:tt) => { $crate::keystroke::Keystroke::make(&[ $(stringify!($m)),*], stringify!($key)) };
-    ($key:tt) => { key!(@m + $key) };
-    ($m1:ident + $key:tt) => { key!(@m $m1 + $key) };
-    ($m1:ident + $m2:ident + $key:tt) => { key!(@m $m1 $m2 + $key) };
-    ($m1:ident + $m2:ident + $m3:ident + $key:tt) => { key!(@m $m1 $m2 $m3 + $key) };
-    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m4 + $key) };
-    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $m5:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m3 $m5 + $key) };
-}
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Keystroke {
@@ -32,14 +20,6 @@ impl Keystroke {
     pub fn make(modifiers: &[&str], key: &str) -> Vec<Self> {
         match key {
             // Alternate names for modifier keys
-            "Ctrl" => Self::make(modifiers, "Control"),
-            "Ctrl_L" => Self::make(modifiers, "Control_L"),
-            "Ctrl_R" => Self::make(modifiers, "Control_R"),
-
-            "Opt" => Self::make(modifiers, "Alt"),
-            "Opt_L" => Self::make(modifiers, "Alt_L"),
-            "Opt_R" => Self::make(modifiers, "Alt_R"),
-
             "Windows" | "Win" => Self::make(modifiers, "Super"),
             "Windows_L" | "Win_L" => Self::make(modifiers, "Super_L"),
             "Windows_R" | "Win_R" => Self::make(modifiers, "Super_R"),
@@ -48,13 +28,21 @@ impl Keystroke {
             "Command_L" | "Cmd_L" => Self::make(modifiers, "Super_L"),
             "Command_R" | "Cmd_R" => Self::make(modifiers, "Super_R"),
 
+            "Ctrl" => Self::make(modifiers, "Control"),
+            "Ctrl_L" => Self::make(modifiers, "Control_L"),
+            "Ctrl_R" => Self::make(modifiers, "Control_R"),
+
+            "Opt" => Self::make(modifiers, "Alt"),
+            "Opt_L" => Self::make(modifiers, "Alt_L"),
+            "Opt_R" => Self::make(modifiers, "Alt_R"),
+
             // Modifier keys that actually have *_L and *_R
-            "Shift" => Self::make_left_right(modifiers, "Shift"),
-            "Control" => Self::make_left_right(modifiers, "Control"),
-            "Alt" => Self::make_left_right(modifiers, "Alt"),
-            "Meta" => Self::make_left_right(modifiers, "Meta"),
             "Hyper" => Self::make_left_right(modifiers, "Hyper"),
             "Super" => Self::make_left_right(modifiers, "Super"),
+            "Meta" => Self::make_left_right(modifiers, "Meta"),
+            "Control" => Self::make_left_right(modifiers, "Control"),
+            "Alt" => Self::make_left_right(modifiers, "Alt"),
+            "Shift" => Self::make_left_right(modifiers, "Shift"),
 
             // Normal keys
             _ => {
@@ -65,13 +53,13 @@ impl Keystroke {
                 let mod_mask = modifiers.iter().fold(0, |accum, &m| {
                     accum
                         | match m {
-                            "Shift" => xcb::KEY_BUT_MASK_SHIFT as u16,
-                            "Control" | "Ctrl" => xcb::KEY_BUT_MASK_CONTROL as u16,
-                            "Alt" | "Opt" | "Meta" => xcb::KEY_BUT_MASK_MOD_1 as u16,
                             "Hyper" => xcb::KEY_BUT_MASK_MOD_3 as u16,
                             "Super" | "Windows" | "Win" | "Command" | "Cmd" => {
                                 xcb::KEY_BUT_MASK_MOD_4 as u16
                             }
+                            "Control" | "Ctrl" => xcb::KEY_BUT_MASK_CONTROL as u16,
+                            "Alt" | "Opt" | "Meta" => xcb::KEY_BUT_MASK_MOD_1 as u16,
+                            "Shift" => xcb::KEY_BUT_MASK_SHIFT as u16,
                             _ => 0,
                         }
                 });
@@ -165,16 +153,6 @@ impl Display for Keystroke {
                 };
                 Some(format!(
                     "{}{}{}{}{}{}{}{}",
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
-                        "alt-"
-                    } else {
-                        ""
-                    },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
-                        "mod2-"
-                    } else {
-                        ""
-                    },
                     if self.modifiers & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0 {
                         "hyper-"
                     } else {
@@ -185,6 +163,11 @@ impl Display for Keystroke {
                     } else {
                         ""
                     },
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
+                        "mod2-"
+                    } else {
+                        ""
+                    },
                     if self.modifiers & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0 {
                         "mod5-"
                     } else {
@@ -192,6 +175,11 @@ impl Display for Keystroke {
                     },
                     if self.modifiers & xcb::KEY_BUT_MASK_CONTROL as u16 != 0 {
                         "control-"
+                    } else {
+                        ""
+                    },
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
+                        "alt-"
                     } else {
                         ""
                     },
@@ -218,16 +206,6 @@ impl Display for Keystroke {
                 };
                 Some(format!(
                     "{}{}{}{}{}{}{}",
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
-                        "alt-"
-                    } else {
-                        ""
-                    },
-                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
-                        "mod2-"
-                    } else {
-                        ""
-                    },
                     if self.modifiers & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0 {
                         "hyper-"
                     } else {
@@ -238,6 +216,11 @@ impl Display for Keystroke {
                     } else {
                         ""
                     },
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
+                        "mod2-"
+                    } else {
+                        ""
+                    },
                     if self.modifiers & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0 {
                         "mod5-"
                     } else {
@@ -245,6 +228,11 @@ impl Display for Keystroke {
                     },
                     if self.modifiers & xcb::KEY_BUT_MASK_CONTROL as u16 != 0 {
                         "control-"
+                    } else {
+                        ""
+                    },
+                    if self.modifiers & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
+                        "alt-"
                     } else {
                         ""
                     },
@@ -260,4 +248,16 @@ impl Display for Keystroke {
             (None, None) => write!(formatter, "Invalid Key Description"),
         }
     }
+}
+
+#[macro_export]
+macro_rules! key {
+    // The unfolding of the modifier sequence is required to get around a weakness in Rust's macro pattern matching
+    (@m $($m:ident)* + $key:tt) => { $crate::keystroke::Keystroke::make(&[ $(stringify!($m)),*], stringify!($key)) };
+    ($key:tt) => { key!(@m + $key) };
+    ($m1:ident + $key:tt) => { key!(@m $m1 + $key) };
+    ($m1:ident + $m2:ident + $key:tt) => { key!(@m $m1 $m2 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $key:tt) => { key!(@m $m1 $m2 $m3 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m4 + $key) };
+    ($m1:ident + $m2:ident + $m3:ident + $m4:ident + $m5:ident + $key:tt) => { key!(@m $m1 $m2 $m3 $m3 $m5 + $key) };
 }

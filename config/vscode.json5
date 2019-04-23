@@ -1,8 +1,0 @@
-[
-  {
-    path: "window-manager/launch",
-    keys: {
-      c: { label: "Visual Studio Code", command: "code" },
-    }
-  },
-]

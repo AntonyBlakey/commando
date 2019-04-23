@@ -1,225 +1,309 @@
-use crate::{config, keystroke::Keystroke};
-use regex::Regex;
-use std::{collections::HashMap, path::PathBuf};
+use super::{connection::connection, keystroke::Keystroke};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 
-pub type DefinitionId = String;
-pub type KeySpec = String;
-pub type CommandLine = String;
-pub type DisplayLabel = String;
+pub struct Context {}
 
-pub type Command = config::Command;
-pub type Event = config::Event;
+impl Context {
+    pub fn instance(&self) -> String {
+        "".into()
+    }
 
-#[derive(Default, Debug, Clone)]
+    pub fn class(&self) -> String {
+        "".into()
+    }
+
+    pub fn connection(&self) -> Rc<xcb::Connection> {
+        connection()
+    }
+}
+
 pub struct Model {
-    // Preserved for producing help
-    pub keys: HashMap<KeySpec, Binding>,
-    pub commands: HashMap<Command, Vec<KeySpec>>,
-    pub files: Vec<PathBuf>,
-
-    pub definitions: HashMap<DefinitionId, Vec<Definition>>,
-    pub handlers: HashMap<Event, String>,
-    pub command_bindings: HashMap<Keystroke, Command>,
-
-    pub bindings: HashMap<Keystroke, Binding>,
+    bindings: HashMap<&'static str, Vec<Binding>>,
 }
 
 impl Model {
-    pub fn new(files: Vec<PathBuf>) -> Model {
-        let mut model = Model {
-            files,
-            ..Default::default()
-        };
+    pub fn new() -> Model {
+        Self {
+            bindings: HashMap::new(),
+        }
+    }
 
-        let definitions = model
-            .files
+    pub fn extend_with(&mut self, factory: &Fn(&mut Self)) {
+        factory(self);
+    }
+
+    pub fn add_binding(
+        &mut self,
+        set: &'static str,
+        keystrokes: Vec<Keystroke>,
+        label: &'static str,
+        group: Option<&'static str>,
+        guard: Option<Arc<Guard>>,
+        action: Action,
+    ) {
+        self.bindings
+            .entry(set)
+            .or_default()
+            .extend(keystrokes.iter().map(|&keystroke| {
+                Binding::new(keystroke, label, group, guard.clone(), action.clone())
+            }));
+    }
+
+    pub fn get_applicable_bindings(&self, name: &str, context: &Context) -> Vec<Binding> {
+        self.bindings
+            .get("@global")
             .iter()
-            .filter(|f| {
-                let ext = f.extension().unwrap();
-                ext == "json5" || ext == "json"
+            .chain(self.bindings.get(name).iter())
+            .flat_map(|&bs| bs)
+            .filter(|b| b.apply_guard(context))
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_binding(
+        &self,
+        set: &str,
+        context: &Context,
+        keystroke: Keystroke,
+    ) -> Option<Binding> {
+        self.bindings
+            .get("@global")
+            .iter()
+            .chain(self.bindings.get(set).iter())
+            .flat_map(|&bs| bs)
+            .find(|b| b.keystroke() == keystroke && b.apply_guard(context))
+            .cloned()
+    }
+
+    pub fn get_root_grab_keys(&self) -> Vec<Keystroke> {
+        self.get_applicable_bindings("@root", &Context {})
+            .iter()
+            .filter_map(|b| match b.action {
+                Action::Cancel => None,
+                _ => Some(b.keystroke),
             })
-            .map(|f| std::fs::read_to_string(f).unwrap())
-            .map(|source| config::ConfigFile::from_string(&source).unwrap())
-            .flat_map(|config| config.definitions);
-
-        for def in definitions {
-            match def {
-                config::Definition::Root { commands, handlers } => {
-                    model.handlers = handlers;
-                    model.commands = commands;
-                    for (c, ks) in &model.commands {
-                        for k in ks {
-                            for d in Keystroke::parse(k) {
-                                model.command_bindings.insert(d, *c);
-                            }
-                        }
-                    }
-                }
-                config::Definition::Linear {
-                    path,
-                    guard,
-                    keys,
-                    groups,
-                } => {
-                    let def = Definition::new(&guard, &keys, &groups);
-                    match path {
-                        Some(path) => match model.definitions.get_mut(&path) {
-                            Some(vec) => {
-                                vec.push(def);
-                            }
-                            None => {
-                                model.definitions.insert(path.clone(), vec![def]);
-                            }
-                        },
-                        None => {
-                            model.bindings.extend(def.bindings);
-                            model.keys.extend(def.keys);
-                        }
-                    };
-                }
-            }
-        }
-
-        model
+            .collect()
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct Definition {
-    pub guard: Guard,
-    pub keys: HashMap<KeySpec, Binding>,
-    pub bindings: HashMap<Keystroke, Binding>,
+pub trait Guard = Fn(&Context) -> bool;
+pub fn new_guard<F>(f: F) -> Arc<Guard>
+where
+    F: Guard + 'static,
+{
+    Arc::new(f)
 }
 
-impl Definition {
-    fn new(
-        from_guard: &config::Guard,
-        from_keys: &config::KeyMap,
-        from_groups: &Vec<config::GroupDefinition>,
-    ) -> Definition {
-        let mut definition: Definition = Default::default();
-
-        definition.guard.class = from_guard.class.clone();
-        definition.guard.instance = from_guard.instance.clone();
-        definition.guard.command = from_guard.command.clone();
-
-        for (k, v) in from_keys {
-            let binding = Binding::new(v, None);
-            for d in Keystroke::parse(k) {
-                definition.bindings.insert(d, binding.clone());
-            }
-            definition.keys.insert(k.clone(), binding);
-        }
-        for g in from_groups {
-            for (k, v) in &g.keys {
-                let binding = Binding::new(&v, Some(g.label.clone()));
-                for d in Keystroke::parse(&k) {
-                    definition.bindings.insert(d, binding.clone());
-                }
-                definition.keys.insert(k.clone(), binding);
-            }
-        }
-
-        definition
-    }
+pub trait ActionFn = Fn(&Context);
+pub fn new_actionfn<F>(f: F) -> Arc<ActionFn>
+where
+    F: ActionFn + 'static,
+{
+    Arc::new(f)
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct Guard {
-    pub class: Option<Regex>,
-    pub instance: Option<Regex>,
-    pub command: Option<CommandLine>,
+#[derive(Clone)]
+pub enum Action {
+    Cancel,
+    ToggleHelp,
+    Mode(&'static str),
+    Call(Arc<ActionFn>),
+    Exec(Arc<ActionFn>),
 }
 
-#[derive(Clone, Debug)]
-pub enum Binding {
-    Exec {
-        group_label: Option<DisplayLabel>,
-        label: DisplayLabel,
-        exec: CommandLine,
-    },
-    Call {
-        group_label: Option<DisplayLabel>,
-        label: DisplayLabel,
-        call: CommandLine,
-    },
-    Mode {
-        group_label: Option<DisplayLabel>,
-        label: DisplayLabel,
-        mode: DefinitionId,
-    },
+#[derive(Clone)]
+pub struct Binding {
+    keystroke: Keystroke,
+    label: &'static str,
+    group: Option<&'static str>,
+    guard: Option<Arc<Guard>>,
+    action: Action,
 }
 
 impl Binding {
-    fn new(from: &config::Binding, group_label: Option<DisplayLabel>) -> Binding {
-        match from {
-            config::Binding::Command {
-                label,
-                command,
-                r#loop: false,
-                select_window: _,
-            } => Binding::Exec {
-                group_label,
-                label: label.clone(),
-                exec: command.clone(),
-            },
-            config::Binding::Command {
-                label,
-                command,
-                r#loop: true,
-                select_window: _,
-            } => Binding::Call {
-                group_label,
-                label: label.clone(),
-                call: command.clone(),
-            },
-            config::Binding::Mode { label, mode } => Binding::Mode {
-                group_label,
-                label: label.clone(),
-                mode: mode.clone(),
-            },
+    pub fn new(
+        keystroke: Keystroke,
+        label: &'static str,
+        group: Option<&'static str>,
+        guard: Option<Arc<Guard>>,
+        action: Action,
+    ) -> Binding {
+        Self {
+            keystroke,
+            label,
+            group,
+            guard,
+            action,
         }
     }
 
-    pub fn clone_with_label(&self, label: String) -> Binding {
-        match self {
-            Binding::Exec {
-                group_label, exec, ..
-            } => Binding::Exec {
-                label,
-                group_label: group_label.clone(),
-                exec: exec.clone(),
-            },
-            Binding::Call {
-                group_label, call, ..
-            } => Binding::Call {
-                label,
-                group_label: group_label.clone(),
-                call: call.clone(),
-            },
-            Binding::Mode {
-                group_label, mode, ..
-            } => Binding::Mode {
-                label,
-                group_label: group_label.clone(),
-                mode: mode.clone(),
-            },
+    pub fn keystroke(&self) -> Keystroke {
+        self.keystroke
+    }
+
+    pub fn label(&self) -> &'static str {
+        self.label
+    }
+
+    pub fn group(&self) -> Option<&'static str> {
+        self.group
+    }
+
+    pub fn apply_guard(&self, context: &Context) -> bool {
+        match &self.guard {
+            Some(f) => f(context),
+            None => true,
         }
     }
 
-    pub fn group_label(&self) -> &Option<DisplayLabel> {
-        match self {
-            Binding::Exec { group_label, .. } => group_label,
-            Binding::Call { group_label, .. } => group_label,
-            Binding::Mode { group_label, .. } => group_label,
-        }
+    pub fn action<'a>(&'a self) -> &'a Action {
+        &self.action
     }
+}
 
-    pub fn label(&self) -> &DisplayLabel {
-        match self {
-            Binding::Exec { label, .. } => label,
-            Binding::Call { label, .. } => label,
-            Binding::Mode { label, .. } => label,
+#[macro_export]
+macro_rules! bindings {
+
+    (@new_guard None | $($args:tt)* | $($body:tt)+) => { new_guard(| $($args)* | $($body)+) };
+    (@new_guard None $($body:tt)+) => { new_guard(|_ctx:&Context| $($body)+) };
+
+    (@new_guard $old_guard:ident | $($args:tt)* | $($body:tt)+) => { new_guard(| $($args)* | $($body)+) };
+    (@new_guard $old_guard:ident $($body:tt)+) => { new_guard(|_ctx:&Context| $($body)+) };
+
+    (@new_actionfn | $($x:tt)+) => { new_actionfn(| $($x)+) };
+    (@new_actionfn $($x:tt)+) => { new_actionfn(|_ctx:&Context| $($x)+) };
+
+
+    (
+        @in_binding $model:ident $mode:tt $group:tt $guard:tt ($($keystrokes:tt)+)
+        $label:literal => $new_mode:path
+    ) => {
+         $model.add_binding($mode, $($keystrokes)+, $label, $group, $guard, Action::Mode(stringify!($new_mode)))
+    };
+
+    (
+        @in_binding $model:ident $mode:tt $group:tt $guard:tt  ($($keystrokes:tt)+)
+        $label:literal cancel
+    ) => {
+         $model.add_binding($mode, $($keystrokes)+, $label, $group, $guard, Action::Cancel)
+    };
+
+    (
+        @in_binding $model:ident $mode:tt $group:tt $guard:tt  ($($keystrokes:tt)+)
+        $label:literal toggle help
+    ) => {
+         $model.add_binding($mode, $($keystrokes)+, $label, $group, $guard, Action::ToggleHelp)
+    };
+
+    (
+        @in_binding $model:ident $mode:tt $group:tt $guard:tt ($($keystrokes:tt)+)
+        $label:literal hydra $($expr:tt)+
+    ) => {
+         $model.add_binding($mode, $(keystrokes)+, $label, $group, $guard, Action::Call(bindings!(@new_actionfn $($expr)+)))
+    };
+
+    (
+        @in_binding $model:ident $mode:tt $group:tt $guard:tt ($($keystrokes:tt)+)
+        $label:literal $($expr:tt)+
+    ) => {
+         $model.add_binding($mode, $($keystrokes)+, $label, $group, $guard, Action::Exec(bindings!(@new_actionfn $($expr)+)))
+    };
+
+
+    (@in_mode $model:ident $mode:tt $group:tt $guard:tt) => {};
+
+    (
+        @in_mode $model:ident $mode:tt None $guard:tt
+        group $name:literal { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let group = Some($name);
+            bindings!(@in_mode $model $mode group $guard $($body)+);
         }
-    }
+        bindings!(@in_mode $model $mode None $guard $($rest)*);
+    };
+
+    (
+        @in_mode $model:ident $mode:tt $group:tt $guard:tt
+        guard ( $($new_guard:tt)+ ) { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let guard = Some(bindings!(@new_guard $guard $($new_guard)+));
+            bindings!(@in_mode $model $mode $group guard $($body)+);
+        }
+        bindings!(@in_mode $model $mode $group $guard $($rest)*);
+    };
+
+    (
+        @in_mode $model:ident $mode:tt $group:tt $guard:tt
+        $head:tt $(+ $tail:tt)* => { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        bindings!(@in_binding $model $mode $group $guard (key!($head $(+ $tail)*)) $($body)+);
+        bindings!(@in_mode $model $mode $group $guard $($rest)*)
+    };
+
+    (@in_mode $($rest:tt)+) => {
+        // Error
+        $($rest)+
+    };
+
+
+    (@in_model $model:ident $guard:tt) => {};
+
+    (
+        @in_model $model:ident $guard:tt
+        guard ( $($new_guard:tt)+ ) { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let guard = Some(bindings!(@new_guard $guard $($new_guard)+));
+            bindings!(@in_model $model guard $($body)+);
+        }
+        bindings!(@in_model $model $guard $($rest)*);
+    };
+
+    (
+        @in_model $model:ident $guard:tt
+        global { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let mode = "@global";
+            bindings!(@in_mode $model mode None $guard $($body)+);
+        }
+        bindings!(@in_model $model $guard $($rest)*);
+    };
+
+    (
+        @in_model $model:ident $guard:tt
+        root { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let mode = "@root";
+            bindings!(@in_mode $model mode None $guard $($body)+);
+        }
+        bindings!(@in_model $model $guard $($rest)*);
+    };
+
+    (
+        @in_model $model:ident $guard:tt
+        mode $id:path { $($body:tt)+ } $($rest:tt)*
+    ) => {
+        {
+            let mode = stringify!($id);
+            bindings!(@in_mode $model mode None $guard $($body)+);
+        }
+        bindings!(@in_model $model $guard $($rest)*);
+    };
+
+    (@in_model $($rest:tt)+) => {
+        // Error
+        $($rest)+
+    };
+
+
+    (
+        $($body:tt)*
+    ) => {
+        |model:&mut $crate::model::Model| { bindings!(@in_model model None $($body)*); }
+    };
+
 }

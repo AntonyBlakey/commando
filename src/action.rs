@@ -1,4 +1,4 @@
-use super::{help::HelpEngine, model::Event, model::Model};
+use super::model::Model;
 use crossbeam::channel::{Receiver, RecvError, RecvTimeoutError};
 use std::time::Duration;
 
@@ -15,7 +15,7 @@ pub enum ActionMessage {
 pub struct ActionServer<'a> {
     model: &'a Model,
     definition_id: Option<String>,
-    help: HelpEngine,
+    // help: HelpEngine,
 }
 
 impl<'a> ActionServer<'a> {
@@ -27,13 +27,15 @@ impl<'a> ActionServer<'a> {
         ActionServer {
             model,
             definition_id: None,
-            help: Default::default(),
+            // help: Default::default(),
         }
     }
 
     fn main_loop(&mut self, rx: Receiver<ActionMessage>) {
         loop {
-            if self.definition_id.is_none() || self.help.is_showing() {
+            if self.definition_id.is_none()
+            /*|| self.help.is_showing()*/
+            {
                 match rx.recv() {
                     Ok(action) => self.handle_action(&action),
                     Err(RecvError) => return,
@@ -64,15 +66,7 @@ impl<'a> ActionServer<'a> {
         self.hide_help();
     }
 
-    fn enter(&mut self) {
-        if let Some(command_line) = self.model.handlers.get(&Event::EnterModal) {
-            std::process::Command::new("sh")
-                .arg("-c")
-                .arg(command_line)
-                .spawn()
-                .expect(&format!("Failed to spawn {}", command_line));
-        }
-    }
+    fn enter(&mut self) {}
 
     fn mode(&mut self, id: &String) {
         self.definition_id = Some(id.clone());
@@ -82,13 +76,6 @@ impl<'a> ActionServer<'a> {
     fn exit(&mut self) {
         self.definition_id = None;
         self.hide_help();
-        if let Some(command_line) = self.model.handlers.get(&Event::ExitModal) {
-            std::process::Command::new("sh")
-                .arg("-c")
-                .arg(command_line)
-                .spawn()
-                .expect(&format!("Failed to spawn {}", command_line));
-        }
     }
 
     fn exec(&mut self, command_line: &String) {
@@ -109,20 +96,20 @@ impl<'a> ActionServer<'a> {
     }
 
     fn show_help(&mut self) {
-        self.help.show(&self.model, &self.definition_id);
+        // self.help.show(&self.model, &self.definition_id);
     }
 
     fn refresh_help(&mut self) {
-        if self.help.is_showing() {
-            self.help.show(&self.model, &self.definition_id);
-        }
+        // if self.help.is_showing() {
+        //     self.help.show(&self.model, &self.definition_id);
+        // }
     }
 
     fn hide_help(&mut self) {
-        self.help.hide(&self.model);
+        // self.help.hide(&self.model);
     }
 
     fn toggle_help(&mut self) {
-        self.help.toggle(&self.model, &self.definition_id);
+        // self.help.toggle(&self.model, &self.definition_id);
     }
 }

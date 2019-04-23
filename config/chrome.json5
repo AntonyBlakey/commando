@@ -1,8 +1,0 @@
-[
-  {
-    path: "window-manager/launch",
-    keys: {
-      w: { label: "Chromium Browser", command: "chromium-browser" },
-    }
-  },
-]

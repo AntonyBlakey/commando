@@ -1,4 +1,4 @@
-use crate::{connection::connection, keystroke::Keystroke};
+use super::{connection::connection, keystroke::Keystroke};
 use std::{cell::RefCell, collections::HashSet};
 
 pub struct EventSource {
@@ -30,13 +30,13 @@ impl EventSource {
         }
     }
 
-    pub fn grab_keys<'a, T>(&self, descriptions: T)
+    pub fn grab_keys<'a, T>(&self, keystrokes: T)
     where
         T: Iterator<Item = &'a Keystroke>,
     {
         let connection = connection();
         let root = connection.get_setup().roots().nth(0).unwrap().root();
-        for desc in descriptions {
+        for desc in keystrokes {
             xcb::xproto::grab_key(
                 &connection,
                 false,
