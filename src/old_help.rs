@@ -395,27 +395,36 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref KEYSYM_HTML: HashMap<&'static str, &'static str> = {
+    static ref MODIFIER_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
         let mut m = HashMap::new();
-        m.insert("Hyper", "hyper-");
-        m.insert("Super", "<span class='symbol'>&#8984;</span>");
-        m.insert("Control", "<span class='symbol'>&#8963;</span>");
-        m.insert("Alt", "<span class='symbol'>&#8997;</span>");
-        m.insert("Shift", "<span class='symbol'>&#8679;</span>");
-        m.insert("Tab", "<span class='symbol'>&#8677;</span>");
-        m.insert("Return", "<span class='symbol'>&crarr;</span>");
-        m.insert("Escape", "<span class='symbol'>&#9099;</span>");
-        m.insert("BackSpace", "<span class='symbol'>&#9003;</span>");
-        m.insert("Delete", "<span class='symbol'>&#8998;</span>");
-        m.insert("Up", "<span class='symbol'>&uarr;</span>");
-        m.insert("Down", "<span class='symbol'>&darr;</span>");
-        m.insert("Left", "<span class='symbol'>&larr;</span>");
-        m.insert("Right", "<span class='symbol'>&rarr;</span>");
-        m.insert("PageUp", "<span class='symbol'>&#8670;</span>");
-        m.insert("PageDown", "<span class='symbol'>&#8671;</span>");
-        m.insert("Home", "<span class='symbol'>&#8598;</span>");
-        m.insert("End", "<span class='symbol'>&#8600;</span>");
-        m.insert("space", "<span class='symbol'>&#9251;</span>");
+        m.insert("Super", "&#8984");
+        m.insert("Control", "&#8963");
+        m.insert("Alt", "&#8997");
+        m.insert("Shift", "&#8679");
+        m
+    };
+
+    static ref KEYSYM_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("Tab", "&#8677");
+        m.insert("Return", "&crarr");
+        m.insert("Escape", "&#9099");
+        m.insert("BackSpace", "&#9003");
+        m.insert("Delete", "&#8998");
+        m.insert("Up", "&uarr");
+        m.insert("Down", "&darr");
+        m.insert("Left", "&larr");
+        m.insert("Right", "&rarr");
+        m.insert("PageUp", "&#8670");
+        m.insert("PageDown", "&#8671");
+        m.insert("Home", "&#8598");
+        m.insert("End", "&#8600");
+        m.insert("space", "&#9251");
+        m
+    };
+
+    static ref KEYSYM_NAMES_TO_CHARACTERS: HashMap<&static stc, &'static str> = {
+        let mut m = HashMap::new();
         m.insert("plus", "+");
         m.insert("minus", "-");
         m.insert("less", "&lt;");

@@ -1,11 +1,22 @@
-use crate::{connection, keystroke::Keystroke, model::Binding};
-use itertools::Itertools;
+
+use crate::{
+    connection,
+    keystroke::Keystroke,
+    model::{Action, Binding},
+};
+
 use pango::LayoutExt;
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use std::collections::{BTreeMap, HashMap};
 
 pub struct HelpWindow {
     window: xcb::Window,
-    column_widths: (u32, u32, u32),
+    width: u32,
+    height: u32,
+    column_widths: (u32, u32, u32, u32),
     groups: Vec<(Option<&'static str>, Vec<(Keystroke, &'static str)>)>,
+    system_bindings: BTreeMap<&'static str, Vec<Keystroke>>, // BTreeMap to retain sort order
 }
 
 impl HelpWindow {
@@ -31,7 +42,7 @@ impl HelpWindow {
             -100,
             1,
             1,
-            0,
+            1,
             xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
             root_visual,
             &values,
@@ -39,8 +50,11 @@ impl HelpWindow {
 
         HelpWindow {
             window,
+            width: 0,
+            height: 0,
             column_widths: Default::default(),
             groups: Default::default(),
+            system_bindings: Default::default(),
         }
     }
 
@@ -49,91 +63,173 @@ impl HelpWindow {
     }
 
     pub fn update(&mut self, bindings: Vec<Binding>) {
+        self.set_bindings(bindings);
+
         if let Ok(surface) = connection::get_cairo_surface(self.window) {
             let cairo_context = cairo::Context::new(&surface);
             if let Some(layout) = pangocairo::functions::create_layout(&cairo_context) {
-                let mut mut_bindings = bindings;
-                mut_bindings.sort_by_key(|b| b.group());
-                self.groups = mut_bindings
-                    .iter()
-                    .group_by(|b| b.group())
-                    .into_iter()
-                    .map(|(group, group_bindings)| {
-                        (
-                            group,
-                            group_bindings
-                                .into_iter()
-                                .map(|b| (b.keystroke(), b.label()))
-                                .collect(),
-                        )
-                    })
-                    .collect();
-
                 let font_description =
-                    pango::FontDescription::from_string("Operator Mono SSm Light 11px");
+                    // pango::FontDescription::from_string("Operator Mono SSm Light 11px");
+                    pango::FontDescription::from_string("Noto Sans 11px");
+                let key_font_description =
+                    pango::FontDescription::from_string("Noto Sans Mono 11px");
+                let symbol_font_description =
+                    pango::FontDescription::from_string("Lucida Grande 11px");
+
                 layout.set_font_description(&font_description);
                 layout.set_text("\u{2794}");
-                let width_2 = layout.get_pixel_size().0 as u32;
+                let width_3 = layout.get_pixel_size().0 as u32;
 
                 let mut height = 0;
+
+                if !self.system_bindings.is_empty() {
+                    height += self.system_bindings.len() as u32 * 14 + 10 + 10;
+                }
+
                 let mut width_1 = 0;
-                let mut width_3 = 0;
+                let mut width_2 = 0;
+                let mut width_4 = 0;
                 for (group, group_bindings) in &self.groups {
                     if let Some(_) = group {
-                        height += 4 + 14 + 4;
+                        height += 8 + 14 + 4;
                     }
                     for (keystroke, label) in group_bindings {
                         height += 14;
-                        layout.set_text(keystroke.to_string().as_str());
-                        width_1 = width_1.max(layout.get_pixel_size().0 as u32);
+                        let (w1, w2) = keystroke.process_help(
+                            &cairo_context,
+                            &key_font_description,
+                            &symbol_font_description,
+                            true,
+                        );
+                        width_1 = width_1.max(w1);
+                        width_2 = width_2.max(w2);
                         layout.set_text(label);
-                        width_3 = width_3.max(layout.get_pixel_size().0 as u32);
+                        width_4 = width_4.max(layout.get_pixel_size().0 as u32);
                     }
                 }
 
-                self.column_widths = (width_1, width_2, width_3);
+                self.column_widths = (width_1, width_2, width_3, width_4);
+
+                self.width = 10 + width_1 + width_2 + 10 + width_3 + 10 + width_4 + 10;
+                self.height = 10 + height + 10;
 
                 xcb::configure_window(
                     &connection::connection(),
                     self.window,
                     &[
                         (xcb::CONFIG_WINDOW_X as u16, 0),
-                        (xcb::CONFIG_WINDOW_Y as u16, (1440 - (10 + height + 10)) / 2),
-                        (
-                            xcb::CONFIG_WINDOW_WIDTH as u16,
-                            10 + width_1 + 10 + width_2 + 10 + width_3 + 10,
-                        ),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, 10 + height + 10),
+                        (xcb::CONFIG_WINDOW_Y as u16, (1440 - (self.height + 2)) / 2),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, self.width + 2),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, self.height + 2),
                     ],
                 );
             }
         }
+
+        if let Ok(attributes) =
+            xcb::get_window_attributes(&connection::connection(), self.window).get_reply()
+        {
+            if attributes.map_state() == xcb::MAP_STATE_VIEWABLE as u8 {
+                self.draw();
+            }
+        }
     }
 
-    pub fn expose(&self, event: &xcb::ExposeEvent) {
+    pub fn draw(&self) {
         if let Ok(surface) = connection::get_cairo_surface(self.window) {
             let cairo_context = cairo::Context::new(&surface);
-
             if let Some(layout) = pangocairo::functions::create_layout(&cairo_context) {
                 let font_description =
-                    pango::FontDescription::from_string("Operator Mono SSm Light 11px");
+                    // pango::FontDescription::from_string("Operator Mono SSm Light 11px");
+                    pango::FontDescription::from_string("Noto Sans 11px");
+                let key_font_description =
+                    pango::FontDescription::from_string("Noto Sans Mono 11px");
+                let symbol_font_description =
+                    pango::FontDescription::from_string("Lucida Grande 11px");
+
                 layout.set_font_description(&font_description);
 
+                cairo_context.set_source_rgb(1.0, 1.0, 0.95);
+                cairo_context.move_to(0.0, 0.0);
+                cairo_context.line_to(self.width as f64, 0.0);
+                cairo_context.line_to(self.width as f64, self.height as f64);
+                cairo_context.line_to(0.0, self.height as f64);
+                cairo_context.close_path();
+                cairo_context.fill();
+
                 let x_column_1 = 10.0;
-                let x_column_2 = x_column_1 + self.column_widths.0 as f64 + 10.0;
+                let x_column_2 = x_column_1 + self.column_widths.0 as f64;
                 let x_column_3 = x_column_2 + self.column_widths.1 as f64 + 10.0;
-                let x_right = x_column_3 + self.column_widths.2 as f64;
+                let x_column_4 = x_column_3 + self.column_widths.2 as f64 + 10.0;
+                let x_right = x_column_4 + self.column_widths.3 as f64;
 
                 let mut y = 10.0;
+
+                if !self.system_bindings.is_empty() {
+                    cairo_context.set_source_rgb(0.9, 1.0, 0.9);
+                    cairo_context.move_to(0.0, 0.0);
+                    cairo_context.rel_line_to(self.width as f64, 0.0);
+                    cairo_context
+                        .rel_line_to(0.0, (10 + self.system_bindings.len() * 14 + 10) as f64);
+                    cairo_context.rel_line_to(0.0 - self.width as f64, 0.0);
+                    cairo_context.close_path();
+                    cairo_context.fill();
+
+                    cairo_context.set_source_rgb(0.0, 0.0, 0.0);
+                    for (label, keystrokes) in &self.system_bindings {
+                        let mut x = x_column_1;
+                        cairo_context.move_to(x, y);
+                        layout.set_text(label);
+                        pangocairo::functions::show_layout(&cairo_context, &layout);
+                        x += layout.get_pixel_size().0 as f64;
+
+                        cairo_context.move_to(x, y);
+                        layout.set_text(": ");
+                        pangocairo::functions::show_layout(&cairo_context, &layout);
+                        x += layout.get_pixel_size().0 as f64;
+
+                        for keystroke in keystrokes {
+                            cairo_context.move_to(x, y);
+                            let (w1, w2) = keystroke.process_help(
+                                &cairo_context,
+                                &key_font_description,
+                                &symbol_font_description,
+                                false,
+                            );
+                            x += w1 as f64;
+
+                            cairo_context.move_to(x, y);
+                            keystroke.process_help(
+                                &cairo_context,
+                                &key_font_description,
+                                &symbol_font_description,
+                                true,
+                            );
+                            x += w2 as f64;
+
+                            cairo_context.move_to(x, y);
+                            layout.set_text(", ");
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+                            x += layout.get_pixel_size().0 as f64;
+                        }
+
+                        y += 14.0;
+                    }
+
+                    y += 10.0;
+                    y += 10.0;
+                }
+
                 for (group, group_bindings) in &self.groups {
                     if let Some(group_name) = group {
-                        y += 4.0;
+                        y += 8.0;
                         cairo_context.set_source_rgb(0.0, 0.5, 0.0);
                         cairo_context.move_to(x_column_1, y);
                         layout.set_text(group_name);
                         pangocairo::functions::show_layout(&cairo_context, &layout);
                         y += 14.0;
 
+                        y += 2.0;
                         cairo_context.set_source_rgb(0.7, 0.85, 0.7);
                         cairo_context.move_to(x_column_1, y + 0.5);
                         cairo_context.line_to(x_right, y + 0.5);
@@ -145,17 +241,21 @@ impl HelpWindow {
                     for (keystroke, label) in group_bindings {
                         cairo_context.set_source_rgb(0.0, 0.0, 0.0);
 
-                        cairo_context.move_to(x_column_1, y);
-                        layout.set_text(keystroke.to_string().as_str());
-                        pangocairo::functions::show_layout(&cairo_context, &layout);
+                        cairo_context.move_to(x_column_2, y);
+                        keystroke.process_help(
+                            &cairo_context,
+                            &key_font_description,
+                            &symbol_font_description,
+                            true,
+                        );
 
-                        cairo_context.move_to(x_column_3, y);
+                        cairo_context.move_to(x_column_4, y);
                         layout.set_text(label);
                         pangocairo::functions::show_layout(&cairo_context, &layout);
 
                         cairo_context.set_source_rgb(0.7, 0.7, 0.7);
 
-                        cairo_context.move_to(x_column_2, y);
+                        cairo_context.move_to(x_column_3, y);
                         layout.set_text("\u{2794}");
                         pangocairo::functions::show_layout(&cairo_context, &layout);
 
@@ -167,10 +267,322 @@ impl HelpWindow {
         }
     }
 
+    fn set_bindings(&mut self, bindings: Vec<Binding>) {
+        let (mut system_bindings, mut groups): (Vec<Binding>, Vec<Binding>) =
+            bindings.into_iter().partition(|b| match b.action() {
+                Action::Cancel | Action::ToggleHelp => true,
+                _ => false,
+            });
+
+        system_bindings.sort_by_key(|b| b.label());
+        self.system_bindings = system_bindings
+            .iter()
+            .group_by(|b| b.label())
+            .into_iter()
+            .map(|(label, bindings)| (label, bindings.into_iter().map(|b| b.keystroke()).collect()))
+            .collect();
+
+        groups.sort_by_key(|b| b.group());
+        self.groups = groups
+            .iter()
+            .group_by(|b| b.group())
+            .into_iter()
+            .map(|(group, bindings)| {
+                (
+                    group,
+                    bindings
+                        .into_iter()
+                        .map(|b| (b.keystroke(), b.label()))
+                        .collect(),
+                )
+            })
+            .collect();
+    }
+
 }
 
 impl Drop for HelpWindow {
     fn drop(&mut self) {
         xcb::destroy_window(&connection::connection(), self.window);
     }
+}
+
+impl Keystroke {
+    fn process_help(
+        &self,
+        cairo_context: &cairo::Context,
+        text_font: &pango::FontDescription,
+        symbol_font: &pango::FontDescription,
+        draw: bool,
+    ) -> (u32, u32) {
+        if let Some(layout) = pangocairo::functions::create_layout(&cairo_context) {
+            let connection = connection::connection();
+            let key_symbols = xcb_util::keysyms::KeySymbols::new(&connection);
+
+            let (keysym, hide_shift) = match (
+                key_symbols.get_keysym(self.keycode(), 0),
+                key_symbols.get_keysym(self.keycode(), 1),
+            ) {
+                (xcb::base::NO_SYMBOL, xcb::base::NO_SYMBOL) => return (0, 0),
+                (a, xcb::base::NO_SYMBOL) => (a, false),
+                (xcb::base::NO_SYMBOL, b) => (b, true),
+                (a, b) => {
+                    if self.made_with_shift() {
+                        (a, false)
+                    } else {
+                        (b, true)
+                    }
+                }
+            };
+
+            layout.set_font_description(text_font);
+            let text_baseline = layout.get_baseline();
+            layout.set_font_description(symbol_font);
+            let symbol_baseline = layout.get_baseline();
+            let symbol_baseline_offset =
+                (text_baseline - symbol_baseline) as f64 / pango::SCALE as f64;
+
+            let (keysym_name, is_symbol) = self.keyname_display_form(unsafe {
+                std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
+                    .to_str()
+                    .unwrap()
+            });
+            layout.set_font_description(if is_symbol { symbol_font } else { text_font });
+            layout.set_text(keysym_name);
+            let width_2 = layout.get_pixel_size().0;
+            if draw {
+                if is_symbol {
+                    cairo_context.rel_move_to(0.0, symbol_baseline_offset);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                } else {
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                }
+            }
+
+            let mut width = 0;
+
+            // spacing between modifiers and key
+            width += 2;
+            cairo_context.rel_move_to(-2.0, 0.0);
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_4 as u16 != 0 {
+                layout.set_font_description(symbol_font);
+                layout.set_text("\u{2318}");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                }
+            }
+
+            if !hide_shift && self.modifiers() & xcb::KEY_BUT_MASK_SHIFT as u16 != 0 {
+                layout.set_font_description(symbol_font);
+                layout.set_text("\u{21e7}");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                }
+            }
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
+                layout.set_font_description(symbol_font);
+                layout.set_text("\u{2325}");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                }
+            }
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_CONTROL as u16 != 0 {
+                layout.set_font_description(symbol_font);
+                layout.set_text("\u{2303}");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                }
+            }
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
+                layout.set_font_description(text_font);
+                layout.set_text("mod2-");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, 0.0);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                }
+            }
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0 {
+                layout.set_font_description(text_font);
+                layout.set_text("mod5-");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, 0.0);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                }
+            }
+
+            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0 {
+                layout.set_font_description(text_font);
+                layout.set_text("hyper-");
+                let w = layout.get_pixel_size().0;
+                width += w;
+                if draw {
+                    cairo_context.rel_move_to(-w as f64, 0.0);
+                    pangocairo::functions::show_layout(&cairo_context, &layout);
+                }
+            }
+
+            (width as u32, width_2 as u32)
+        } else {
+            (0, 0)
+        }
+    }
+
+    fn keyname_display_form<'a>(&self, name: &'a str) -> (&'a str, bool) {
+        if let Some(x) = KEYSYM_NAMES_TO_CHARACTERS.get(name) {
+            (x, false)
+        } else if let Some(x) = KEYSYM_NAMES_TO_SYMBOLS.get(name) {
+            (x, true)
+        } else {
+            (name, false)
+        }
+    }
+}
+
+lazy_static! {
+    static ref KEYSYM_SORT_ORDER: HashMap<&'static str, u8> = {
+        let mut m = HashMap::new();
+        let symbols = [
+            "1..9",
+            "parenleft",
+            "parenright",
+            "bracketleft",
+            "bracketright",
+            "braceleft",
+            "braceright",
+            "less",
+            "greater",
+            "plus",
+            "minus",
+            "equal",
+            "slash",
+            "backslash",
+            "underscore",
+            "bar",
+            "semicolon",
+            "colon",
+            "apostrophe",
+            "quotedbl",
+            "grave",
+            "asciitilde",
+            "comma",
+            "period",
+            "question",
+            "numbersign",
+            "exclam",
+            "at",
+            "dollar",
+            "percent",
+            "asciicircum",
+            "ampersand",
+            "asterisk",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "BackSpace",
+            "Delete",
+            "PageUp",
+            "PageDown",
+            "Home",
+            "End",
+            "Tab",
+            "Return",
+            "space",
+            "Escape",
+        ];
+        for i in 0..symbols.len() {
+            m.insert(symbols[i], i as u8);
+        }
+        m
+    };
+
+    static ref MODIFIER_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("Super", "&#8984");
+        m.insert("Control", "&#8963");
+        m.insert("Alt", "&#8997");
+        m.insert("Shift", "&#8679");
+        m
+    };
+
+    static ref KEYSYM_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("Tab", "\u{21e5}");
+        m.insert("Return", "&crarr");
+        m.insert("Escape", "&#9099");
+        m.insert("BackSpace", "&#9003");
+        m.insert("Delete", "&#8998");
+        m.insert("Up", "&uarr");
+        m.insert("Down", "&darr");
+        m.insert("Left", "&larr");
+        m.insert("Right", "&rarr");
+        m.insert("PageUp", "&#8670");
+        m.insert("PageDown", "&#8671");
+        m.insert("Home", "&#8598");
+        m.insert("End", "&#8600");
+        m.insert("space", "&#9251");
+        m
+    };
+
+    static ref KEYSYM_NAMES_TO_CHARACTERS: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("plus", "+");
+        m.insert("minus", "-");
+        m.insert("less", "&lt;");
+        m.insert("greater", "&gt;");
+        m.insert("equal", "=");
+        m.insert("semicolon", ";");
+        m.insert("apostrophe", "'");
+        m.insert("grave", "`");
+        m.insert("backslash", "\\");
+        m.insert("comma", ",");
+        m.insert("period", ".");
+        m.insert("question", "?");
+        m.insert("bar", "|");
+        m.insert("asciitilde", "~");
+        m.insert("quotedbl", "\"");
+        m.insert("colon", ":");
+        m.insert("underscore", "_");
+        m.insert("asterisk", "*");
+        m.insert("ampersand", "&");
+        m.insert("asciicircum", "^");
+        m.insert("percent", "%");
+        m.insert("dollar", "$");
+        m.insert("numbersign", "#");
+        m.insert("at", "@");
+        m.insert("exclam", "!");
+        m.insert("bracketleft", "[");
+        m.insert("bracketright", "]");
+        m.insert("braceleft", "{");
+        m.insert("braceright", "}");
+        m.insert("parenleft", "(");
+        m.insert("parenright", ")");
+        m
+    };
 }

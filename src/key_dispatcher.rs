@@ -41,10 +41,7 @@ impl<'a> KeyDispatcher<'a> {
 
         while let Some(e) = connection::wait_for_event() {
             match e.response_type() & 0x7f {
-                xcb::EXPOSE => {
-                    let event: &xcb::ExposeEvent = unsafe { xcb::cast_event(&e) };
-                    self.help_window.expose(event);
-                }
+                xcb::EXPOSE => self.help_window.draw(),
                 _ => {}
             }
         }

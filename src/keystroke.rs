@@ -1,13 +1,47 @@
 use super::connection::connection;
 use std::{
+    cmp::{Ord, Ordering},
     fmt,
     fmt::{Display, Formatter},
+    hash::{Hash, Hasher},
 };
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct Keystroke {
     modifiers: u16,
     keycode: u8,
+    made_with_shift: bool,
+}
+
+impl Hash for Keystroke {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.modifiers.hash(state);
+        self.keycode.hash(state);
+    }
+}
+
+impl PartialEq for Keystroke {
+    fn eq(&self, other: &Self) -> bool {
+        self.modifiers == other.modifiers && self.keycode == other.keycode
+    }
+}
+
+impl Eq for Keystroke {}
+
+impl PartialOrd for Keystroke {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Keystroke {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let c = self.modifiers.cmp(&other.modifiers);
+        if c != Ordering::Equal {
+            return c;
+        }
+        return self.keycode.cmp(&other.keycode);
+    }
 }
 
 impl Keystroke {
@@ -79,11 +113,13 @@ impl Keystroke {
                                 Self {
                                     modifiers: mod_mask | xcb::KEY_BUT_MASK_SHIFT as u16,
                                     keycode,
+                                    made_with_shift: false,
                                 }
                             } else {
                                 Self {
                                     modifiers: mod_mask,
                                     keycode,
+                                    made_with_shift: true,
                                 }
                             });
                         }
@@ -110,6 +146,10 @@ impl Keystroke {
         self.keycode
     }
 
+    pub fn made_with_shift(&self) -> bool {
+        self.made_with_shift
+    }
+
     fn make_left_right(modifiers: &[&str], key: &str) -> Vec<Self> {
         Self::make(modifiers, &format!("{}_L", key))
             .iter()
@@ -132,6 +172,7 @@ impl From<&xcb::KeyPressEvent> for Keystroke {
                     | xcb::KEY_BUT_MASK_MOD_4
                     | xcb::KEY_BUT_MASK_MOD_5) as u16,
             keycode: event.detail(),
+            made_with_shift: event.state() & xcb::KEY_BUT_MASK_SHIFT as u16 != 0,
         }
     }
 }
@@ -242,7 +283,7 @@ impl Display for Keystroke {
         };
 
         match (f1, f2) {
-            (Some(a), Some(b)) => write!(formatter, "{} / {}", a, b),
+            (Some(a), Some(b)) => write!(formatter, "{}", if self.made_with_shift { a } else { b }),
             (Some(a), None) => write!(formatter, "{}", a),
             (None, Some(b)) => write!(formatter, "{}", b),
             (None, None) => write!(formatter, "Invalid Key Description"),
