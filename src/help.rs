@@ -4,10 +4,9 @@ use crate::{
     keystroke::Keystroke,
     model::{Action, Binding},
 };
-
-use pango::LayoutExt;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use pango::LayoutExt;
 use std::collections::{BTreeMap, HashMap};
 
 pub struct HelpWindow {
@@ -342,11 +341,16 @@ impl Keystroke {
             let symbol_baseline_offset =
                 (text_baseline - symbol_baseline) as f64 / pango::SCALE as f64;
 
-            let (keysym_name, is_symbol) = self.keyname_display_form(unsafe {
+            let raw_keysym_name = unsafe {
                 std::ffi::CStr::from_ptr(x11::xlib::XKeysymToString(keysym.into()))
                     .to_str()
                     .unwrap()
-            });
+            };
+
+            let (keysym_name, is_symbol) = KEYSYM_NAME_DISPLAY_FORM
+                .get(raw_keysym_name)
+                .copied()
+                .unwrap_or_else(|| (raw_keysym_name, false));
             layout.set_font_description(if is_symbol { symbol_font } else { text_font });
             layout.set_text(keysym_name);
             let width_2 = layout.get_pixel_size().0;
@@ -366,85 +370,35 @@ impl Keystroke {
             width += 2;
             cairo_context.rel_move_to(-2.0, 0.0);
 
-            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_4 as u16 != 0 {
-                layout.set_font_description(symbol_font);
-                layout.set_text("\u{2318}");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+            for (name, display_form, is_symbol) in &*MODIFIER_NAME_DISPLAY_FORM {
+                if match *name {
+                    "shift" => {
+                        !hide_shift && self.modifiers() & xcb::KEY_BUT_MASK_SHIFT as u16 != 0
+                    }
+                    "control" => self.modifiers() & xcb::KEY_BUT_MASK_CONTROL as u16 != 0,
+                    "alt" => self.modifiers() & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0,
+                    "mod2" => self.modifiers() & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0,
+                    "hyper" => self.modifiers() & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0,
+                    "super" => self.modifiers() & xcb::KEY_BUT_MASK_MOD_4 as u16 != 0,
+                    "mod5" => self.modifiers() & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0,
+                    _ => false,
+                } {
+                    layout.set_font_description(if *is_symbol { symbol_font } else { text_font });
+                    layout.set_text(display_form);
+                    let w = layout.get_pixel_size().0;
+                    width += w;
+                    if draw {
+                        if *is_symbol {
+                            cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+                            cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
+                        } else {
+                            cairo_context.rel_move_to(-w as f64, 0.0);
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+                        }
+                    }
                 }
-            }
 
-            if !hide_shift && self.modifiers() & xcb::KEY_BUT_MASK_SHIFT as u16 != 0 {
-                layout.set_font_description(symbol_font);
-                layout.set_text("\u{21e7}");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
-                }
-            }
-
-            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_1 as u16 != 0 {
-                layout.set_font_description(symbol_font);
-                layout.set_text("\u{2325}");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
-                }
-            }
-
-            if self.modifiers() & xcb::KEY_BUT_MASK_CONTROL as u16 != 0 {
-                layout.set_font_description(symbol_font);
-                layout.set_text("\u{2303}");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, symbol_baseline_offset);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                    cairo_context.rel_move_to(0.0, -symbol_baseline_offset);
-                }
-            }
-
-            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_2 as u16 != 0 {
-                layout.set_font_description(text_font);
-                layout.set_text("mod2-");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, 0.0);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                }
-            }
-
-            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_5 as u16 != 0 {
-                layout.set_font_description(text_font);
-                layout.set_text("mod5-");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, 0.0);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                }
-            }
-
-            if self.modifiers() & xcb::KEY_BUT_MASK_MOD_3 as u16 != 0 {
-                layout.set_font_description(text_font);
-                layout.set_text("hyper-");
-                let w = layout.get_pixel_size().0;
-                width += w;
-                if draw {
-                    cairo_context.rel_move_to(-w as f64, 0.0);
-                    pangocairo::functions::show_layout(&cairo_context, &layout);
-                }
             }
 
             (width as u32, width_2 as u32)
@@ -453,19 +407,74 @@ impl Keystroke {
         }
     }
 
-    fn keyname_display_form<'a>(&self, name: &'a str) -> (&'a str, bool) {
-        if let Some(x) = KEYSYM_NAMES_TO_CHARACTERS.get(name) {
-            (x, false)
-        } else if let Some(x) = KEYSYM_NAMES_TO_SYMBOLS.get(name) {
-            (x, true)
-        } else {
-            (name, false)
-        }
-    }
 }
 
 lazy_static! {
-    static ref KEYSYM_SORT_ORDER: HashMap<&'static str, u8> = {
+    static ref MODIFIER_NAME_DISPLAY_FORM: Vec<(&'static str, &'static str, bool)> = {
+        vec![
+            ("hyper", "hyper-", false),
+            ("mod5", "mod5-", false),
+            ("mod2", "mod2-", false),
+            ("control", "\u{2303}", true),
+            ("alt", "\u{2325}", true),
+            ("shift", "\u{21e7}", true),
+            ("super", "\u{2318}", true),
+        ]
+    };
+
+    static ref KEYSYM_NAME_DISPLAY_FORM: HashMap<&'static str, (&'static str, bool)> = {
+        let mut m = HashMap::new();
+        m.insert("Tab", ("\u{21e5}", true));
+
+        m.insert("Return", ("&crarr", true));
+        m.insert("Escape", ("&#9099", true));
+        m.insert("BackSpace", ("&#9003", true));
+        m.insert("Delete", ("&#8998", true));
+        m.insert("Up", ("&uarr", true));
+        m.insert("Down", ("&darr", true));
+        m.insert("Left", ("&larr", true));
+        m.insert("Right", ("&rarr", true));
+        m.insert("PageUp", ("&#8670", true));
+        m.insert("PageDown", ("&#8671", true));
+        m.insert("Home", ("&#8598", true));
+        m.insert("End", ("&#8600", true));
+        m.insert("space", ("&#9251", true));
+
+        m.insert("plus", ("+", false));
+        m.insert("minus", ("-", false));
+        m.insert("less", ("<", false));
+        m.insert("greater", (">", false));
+        m.insert("equal", ("=", false));
+        m.insert("semicolon", (";", false));
+        m.insert("apostrophe", ("'", false));
+        m.insert("grave", ("`", false));
+        m.insert("backslash", ("\\", false));
+        m.insert("comma", (",", false));
+        m.insert("period", (".", false));
+        m.insert("question", ("?", false));
+        m.insert("bar", ("|", false));
+        m.insert("asciitilde", ("~", false));
+        m.insert("quotedbl", ("\"", false));
+        m.insert("colon", (":", false));
+        m.insert("underscore", ("_", false));
+        m.insert("asterisk", ("*", false));
+        m.insert("ampersand", ("&", false));
+        m.insert("asciicircum", ("^", false));
+        m.insert("percent", ("%", false));
+        m.insert("dollar", ("$", false));
+        m.insert("numbersign", ("#", false));
+        m.insert("at", ("@", false));
+        m.insert("exclam", ("!", false));
+        m.insert("bracketleft", ("[", false));
+        m.insert("bracketright", ("]", false));
+        m.insert("braceleft", ("{", false));
+        m.insert("braceright", ("}", false));
+        m.insert("parenleft", ("(", false));
+        m.insert("parenright", (")", false));
+        m
+    };
+
+    static ref KEYSYM_NAME_SORT_ORDER: HashMap<&'static str, u8> = {
         let mut m = HashMap::new();
         let symbols = [
             "1..9",
@@ -522,67 +531,4 @@ lazy_static! {
         m
     };
 
-    static ref MODIFIER_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert("Super", "&#8984");
-        m.insert("Control", "&#8963");
-        m.insert("Alt", "&#8997");
-        m.insert("Shift", "&#8679");
-        m
-    };
-
-    static ref KEYSYM_NAMES_TO_SYMBOLS: HashMap<&'static str, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert("Tab", "\u{21e5}");
-        m.insert("Return", "&crarr");
-        m.insert("Escape", "&#9099");
-        m.insert("BackSpace", "&#9003");
-        m.insert("Delete", "&#8998");
-        m.insert("Up", "&uarr");
-        m.insert("Down", "&darr");
-        m.insert("Left", "&larr");
-        m.insert("Right", "&rarr");
-        m.insert("PageUp", "&#8670");
-        m.insert("PageDown", "&#8671");
-        m.insert("Home", "&#8598");
-        m.insert("End", "&#8600");
-        m.insert("space", "&#9251");
-        m
-    };
-
-    static ref KEYSYM_NAMES_TO_CHARACTERS: HashMap<&'static str, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert("plus", "+");
-        m.insert("minus", "-");
-        m.insert("less", "&lt;");
-        m.insert("greater", "&gt;");
-        m.insert("equal", "=");
-        m.insert("semicolon", ";");
-        m.insert("apostrophe", "'");
-        m.insert("grave", "`");
-        m.insert("backslash", "\\");
-        m.insert("comma", ",");
-        m.insert("period", ".");
-        m.insert("question", "?");
-        m.insert("bar", "|");
-        m.insert("asciitilde", "~");
-        m.insert("quotedbl", "\"");
-        m.insert("colon", ":");
-        m.insert("underscore", "_");
-        m.insert("asterisk", "*");
-        m.insert("ampersand", "&");
-        m.insert("asciicircum", "^");
-        m.insert("percent", "%");
-        m.insert("dollar", "$");
-        m.insert("numbersign", "#");
-        m.insert("at", "@");
-        m.insert("exclam", "!");
-        m.insert("bracketleft", "[");
-        m.insert("bracketright", "]");
-        m.insert("braceleft", "{");
-        m.insert("braceright", "}");
-        m.insert("parenleft", "(");
-        m.insert("parenright", ")");
-        m
-    };
 }
