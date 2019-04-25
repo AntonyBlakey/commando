@@ -90,7 +90,7 @@ impl HelpWindow {
                 let mut width_4 = 0;
                 for (group, group_bindings) in &self.groups {
                     if let Some(_) = group {
-                        height += 8 + 14 + 4;
+                        height += 8 + 14 + 2 + 4;
                     }
                     for (keystroke, label) in group_bindings {
                         height += 14;
@@ -117,9 +117,9 @@ impl HelpWindow {
                     self.window,
                     &[
                         (xcb::CONFIG_WINDOW_X as u16, 0),
-                        (xcb::CONFIG_WINDOW_Y as u16, (1440 - (self.height + 2)) / 2),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, self.width + 2),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, self.height + 2),
+                        (xcb::CONFIG_WINDOW_Y as u16, (1440 - self.height) / 2),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, self.width),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, self.height),
                     ],
                 );
             }
@@ -173,6 +173,12 @@ impl HelpWindow {
                     cairo_context.rel_line_to(0.0 - self.width as f64, 0.0);
                     cairo_context.close_path();
                     cairo_context.fill();
+
+                    cairo_context.set_source_rgb(0.8, 0.9, 0.8);
+                    cairo_context.move_to(0.0, (10 + self.system_bindings.len() * 14 + 10) as f64 - 0.5);
+                    cairo_context.rel_line_to(self.width as f64, 0.0);
+                        cairo_context.set_line_width(1.0);
+                        cairo_context.stroke();
 
                     cairo_context.set_source_rgb(0.0, 0.0, 0.0);
 
@@ -425,13 +431,13 @@ impl Keystroke {
 lazy_static! {
     static ref MODIFIER_NAME_DISPLAY_FORM: Vec<(&'static str, &'static str, bool)> = {
         vec![
-            ("hyper", "hyper-", false),
-            ("mod5", "mod5-", false),
-            ("mod2", "mod2-", false),
-            ("control", "\u{2303}", true),
-            ("alt", "\u{2325}", true),
-            ("shift", "\u{21e7}", true),
             ("super", "\u{2318}", true),
+            ("shift", "\u{21e7}", true),
+            ("alt", "\u{2325}", true),
+            ("control", "\u{2303}", true),
+            ("mod2", "mod2-", false),
+            ("mod5", "mod5-", false),
+            ("hyper", "hyper-", false),
         ]
     };
 
@@ -451,7 +457,7 @@ lazy_static! {
         m.insert("PageDown", ("&#8671", true));
         m.insert("Home", ("&#8598", true));
         m.insert("End", ("&#8600", true));
-        m.insert("space", ("&#9251", true));
+        m.insert("space", ("\u{2423}", true));
 
         m.insert("plus", ("+", false));
         m.insert("minus", ("-", false));
