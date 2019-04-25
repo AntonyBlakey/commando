@@ -35,9 +35,9 @@ fn create_model() -> Model {
 
     model.extend_with(&bindings!(
         global {
-            Escape         => { "Cancel" cancel }
-            Ctrl + g       => { "Cancel" cancel }
-            Cmd + question => { "Toggle Help" toggle help }
+            Escape         => { "Cancel Operation" cancel }
+            Ctrl + g       => { "Cancel Operation" cancel }
+            Cmd + question => { "Toggle/Move Help" toggle help }
         }
         root {
             Command => { "Application" => application }

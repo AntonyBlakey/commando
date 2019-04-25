@@ -175,7 +175,10 @@ impl HelpWindow {
                     cairo_context.fill();
 
                     cairo_context.set_source_rgb(0.0, 0.0, 0.0);
-                    for (label, keystrokes) in &self.system_bindings {
+
+                    let save_y = y;
+                    let mut col_2 = x_column_1;
+                    for (label, _) in &self.system_bindings {
                         let mut x = x_column_1;
                         cairo_context.move_to(x, y);
                         layout.set_text(label);
@@ -187,7 +190,15 @@ impl HelpWindow {
                         pangocairo::functions::show_layout(&cairo_context, &layout);
                         x += layout.get_pixel_size().0 as f64;
 
-                        for keystroke in keystrokes {
+                        col_2 = col_2.max(x);
+
+                        y += 14.0;
+                    }
+
+                    y = save_y;
+                    for (_, keystrokes) in &self.system_bindings {
+                        let mut x = col_2;
+                        for (index, keystroke) in keystrokes.iter().enumerate() {
                             cairo_context.move_to(x, y);
                             let (w1, w2) = keystroke.process_help(
                                 &cairo_context,
@@ -206,10 +217,12 @@ impl HelpWindow {
                             );
                             x += w2 as f64;
 
-                            cairo_context.move_to(x, y);
-                            layout.set_text(", ");
-                            pangocairo::functions::show_layout(&cairo_context, &layout);
-                            x += layout.get_pixel_size().0 as f64;
+                            if index < keystrokes.len() - 1 {
+                                cairo_context.move_to(x, y);
+                                layout.set_text(" / ");
+                                pangocairo::functions::show_layout(&cairo_context, &layout);
+                                x += layout.get_pixel_size().0 as f64;
+                            }
                         }
 
                         y += 14.0;
@@ -367,8 +380,8 @@ impl Keystroke {
             let mut width = 0;
 
             // spacing between modifiers and key
-            width += 2;
-            cairo_context.rel_move_to(-2.0, 0.0);
+            width += 1;
+            cairo_context.rel_move_to(-1.0, 0.0);
 
             for (name, display_form, is_symbol) in &*MODIFIER_NAME_DISPLAY_FORM {
                 if match *name {
@@ -427,7 +440,7 @@ lazy_static! {
         m.insert("Tab", ("\u{21e5}", true));
 
         m.insert("Return", ("&crarr", true));
-        m.insert("Escape", ("&#9099", true));
+        m.insert("Escape", ("Esc", false));
         m.insert("BackSpace", ("&#9003", true));
         m.insert("Delete", ("&#8998", true));
         m.insert("Up", ("&uarr", true));
