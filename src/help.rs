@@ -27,16 +27,19 @@ pub struct HelpWindow {
 }
 
 pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
+    log::debug!("Help server started");
+
     let mut is_armed = false;
     let mut is_visible = false;
     loop {
-        if is_armed {
+        if !is_armed {
             match rx.recv() {
                 Ok(HelpMessage::Arm) => is_armed = true,
                 Ok(HelpMessage::Disarm) => (),
                 Ok(HelpMessage::Cancel) => {
                     xcb::unmap_window(&connection::connection(), window);
                     is_visible = false;
+                    log::debug!("Cancel help");
                 }
                 Ok(HelpMessage::Toggle) => {
                     if is_visible {
@@ -46,8 +49,9 @@ pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
                         xcb::map_window(&connection::connection(), window);
                         is_visible = true;
                     }
+                    log::debug!("Toggle help {}", is_visible);
                 }
-                Err(_) => return,
+                Err(_) => break,
             }
         } else {
             is_armed = false;
@@ -57,6 +61,7 @@ pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
                 Ok(HelpMessage::Cancel) => {
                     xcb::unmap_window(&connection::connection(), window);
                     is_visible = false;
+                    log::debug!("Cancel help");
                 }
                 Ok(HelpMessage::Toggle) => {
                     if is_visible {
@@ -66,17 +71,21 @@ pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
                         xcb::map_window(&connection::connection(), window);
                         is_visible = true;
                     }
+                    log::debug!("Toggle help {}", is_visible);
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     if !is_visible {
                         xcb::map_window(&connection::connection(), window);
                         is_visible = true;
+                        log::debug!("Timeout show help");
                     }
                 }
-                Err(_) => return,
+                Err(_) => break,
             }
         }
     }
+
+    log::debug!("Help server stopped");
 }
 
 impl HelpWindow {

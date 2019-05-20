@@ -45,12 +45,12 @@ impl Ord for Keystroke {
 }
 
 impl Keystroke {
-    pub fn make_raw(tokens: &[&str]) -> Vec<Self> {
-        match tokens.split_last() {
-            Some((key, modifiers)) => Self::make(modifiers, key),
-            None => Default::default(),
-        }
-    }
+    // pub fn make_raw(tokens: &[&str]) -> Vec<Self> {
+    //     match tokens.split_last() {
+    //         Some((key, modifiers)) => Self::make(modifiers, key),
+    //         None => Default::default(),
+    //     }
+    // }
 
     pub fn make(modifiers: &[&str], key: &str) -> Vec<Self> {
         match key {
@@ -131,13 +131,13 @@ impl Keystroke {
         }
     }
 
-    pub fn parse(string: &str) -> Vec<Self> {
-        let tokens: Vec<&str> = string.split('-').collect();
-        match tokens.split_last() {
-            Some((keysym_name, raw_modifiers)) => Self::make(raw_modifiers, keysym_name),
-            None => Default::default(),
-        }
-    }
+    // pub fn parse(string: &str) -> Vec<Self> {
+    //     let tokens: Vec<&str> = string.split('-').collect();
+    //     match tokens.split_last() {
+    //         Some((keysym_name, raw_modifiers)) => Self::make(raw_modifiers, keysym_name),
+    //         None => Default::default(),
+    //     }
+    // }
 
     pub fn modifiers(&self) -> u16 {
         self.modifiers

@@ -87,6 +87,7 @@ impl Model {
 }
 
 pub trait Guard = Fn(&Context) -> bool;
+
 pub fn new_guard<F>(f: F) -> Arc<Guard>
 where
     F: Guard + 'static,

@@ -29,6 +29,8 @@ impl KeyDispatcher {
         let context = Context {};
         let mode_name = mode.unwrap_or("@root");
 
+            log::debug!("Enter runloop for mode {}", mode_name);
+
         let bindings = self.model.get_applicable_bindings(mode_name, &Context {});
         self.help_window.update(bindings);
         match mode {
@@ -37,6 +39,7 @@ impl KeyDispatcher {
         }
 
         while let Some(keystroke) = self.wait_for_keystroke() {
+            log::debug!("Got keystroke {}", keystroke);
             tx.send(help::HelpMessage::Disarm)?;
             if let Some(binding) = self.model.get_binding(mode_name, &Context {}, keystroke) {
                 match binding.action() {
@@ -64,6 +67,8 @@ impl KeyDispatcher {
                 }
             }
         }
+
+            log::debug!("Exit runloop for mode {}", mode_name);
 
         Ok(())
     }
