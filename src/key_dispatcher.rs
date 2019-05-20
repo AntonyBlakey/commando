@@ -29,7 +29,7 @@ impl KeyDispatcher {
         let context = Context {};
         let mode_name = mode.unwrap_or("@root");
 
-            log::debug!("Enter runloop for mode {}", mode_name);
+        log::debug!("Enter runloop for mode {}", mode_name);
 
         let bindings = self.model.get_applicable_bindings(mode_name, &Context {});
         self.help_window.update(bindings);
@@ -43,7 +43,12 @@ impl KeyDispatcher {
             tx.send(help::HelpMessage::Disarm)?;
             if let Some(binding) = self.model.get_binding(mode_name, &Context {}, keystroke) {
                 match binding.action() {
-                    Action::Cancel => tx.send(help::HelpMessage::Cancel)?,
+                    Action::Cancel => {
+                        tx.send(help::HelpMessage::Cancel)?;
+                        if mode.is_some() {
+                            break;
+                        }
+                    }
                     Action::ToggleHelp => tx.send(help::HelpMessage::Toggle)?,
                     Action::Mode(new_mode) => {
                         if mode.is_none() {
@@ -68,21 +73,33 @@ impl KeyDispatcher {
             }
         }
 
-            log::debug!("Exit runloop for mode {}", mode_name);
+        log::debug!("Exit runloop for mode {}", mode_name);
 
         Ok(())
     }
 
     pub fn wait_for_keystroke(&self) -> Option<Keystroke> {
+        let mut last_modifier = None;
         while let Some(event) = connection::wait_for_event() {
             if event.response_type() == xcb::KEY_PRESS {
+                last_modifier = None;
                 let press_event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
                 let key = Keystroke::from(press_event);
                 if !key.is_modifier() {
                     if self.wait_for_key_release(&press_event) {
                         return Some(key);
                     }
+                } else {
+                    last_modifier = Some((key, press_event.detail()));
                 }
+            } else if event.response_type() == xcb::KEY_RELEASE {
+                let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
+                if let Some((key, detail)) = last_modifier {
+                    if detail == release_event.detail() {
+                        return Some(key);
+                    }
+                }
+                last_modifier = None;
             } else if event.response_type() == xcb::EXPOSE {
                 self.help_window.draw();
             }
@@ -108,17 +125,23 @@ impl KeyDispatcher {
                     // the queue. If the queue is empty, that means it's not a repeat
                     // because the RELEASE+PRESS pair are queued together.
                     if let Some(next_event) = connection::poll_for_event() {
+                        eprintln!("Poll has value");
                         if next_event.response_type() == xcb::KEY_PRESS {
+                            eprintln!("Repeat poll check");
                             let second_press_event: &xcb::KeyPressEvent =
                                 unsafe { xcb::cast_event(&next_event) };
                             if second_press_event.detail() == release_event.detail()
                                 && second_press_event.state() == release_event.state()
                                 && second_press_event.time() == release_event.time()
                             {
+                                eprintln!("   ... match");
                                 continue;
                             }
+                            eprintln!("   ... fail");
                         }
                         connection::pushback_event(next_event);
+                    } else {
+                        eprintln!("Poll failed");
                     }
                     return true;
                 }

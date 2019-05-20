@@ -1,0 +1,20 @@
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.xephyr]
+dependencies = ["build"]
+script = [
+    "Xephyr :1 -screen 1680x1050 -dpi 96 &",
+    "(sleep 2 ; DISPLAY=:1 nitrogen --set-scaled ~/.config/wallpaper/rsmith_single_blade_of_grass.jpg) &",
+    # "(sleep 2 ; DISPLAY=:1 alacritty &) &",
+    "(sleep 2 ; DISPLAY=:1 MONITOR=default polybar --reload top & ) &",
+    "sleep 1",
+    "DISPLAY=:1 RUST_BACKTRACE=1 target/debug/commando -vvv"
+]
+
+[tasks.vnc]
+dependencies = ["build"]
+script = [
+    "tigervncserver :1 -localhost no --I-KNOW-THIS-IS-INSECURE -fg -cleanstale -geometry 2560x1440 -depth 24 -dpi 96 -rfbport 5911 -SecurityTypes None -AllowOverride RemapKeys -xstartup ./xstartup",
+]

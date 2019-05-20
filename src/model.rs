@@ -12,7 +12,7 @@ impl Context {
         "".into()
     }
 
-    pub fn connection(&self) -> Rc<xcb::Connection> {
+    pub fn connection(&self) -> &xcb::Connection {
         connection()
     }
 }

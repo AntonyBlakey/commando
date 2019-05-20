@@ -1,0 +1,23 @@
+#!/usr/bin/env zsh
+
+if [ -e "$HOME/.Xresources" ] ; then
+    xrdb "$HOME/.Xresources"
+fi
+
+xmodmap -e 'keycode any = Hyper_L'
+xmodmap -e 'keycode any = Hyper_R'
+
+xmodmap -e 'remove mod4 = Hyper_L'
+xmodmap -e 'remove mod4 = Hyper_R'
+xmodmap -e 'add mod3 = Hyper_L'
+xmodmap -e 'add mod3 = Hyper_R'
+
+tigervncconfig -nowin & # Handles C/C/P
+
+# $HOME/.config/commando/launch.sh &
+nitrogen --random --set-scaled $HOME/.config/wallpaper &
+(sleep 4 ; polybar --reload top & ) &
+# (sleep 4 ; alacritty & ) &
+# (sleep 4 ; alacritty & ) &
+# (sleep 4 ; alacritty & ) &
+RUST_BACKTRACE=1 target/debug/commando

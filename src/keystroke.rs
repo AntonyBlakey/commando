@@ -162,7 +162,6 @@ impl Keystroke {
             .copied()
             .collect()
     }
-
 }
 
 impl From<&xcb::KeyPressEvent> for Keystroke {
