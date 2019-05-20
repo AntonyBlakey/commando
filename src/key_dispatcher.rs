@@ -3,10 +3,7 @@ use super::{
     keystroke::Keystroke,
     model::{Action, Context, Model},
 };
-use crossbeam::{
-    channel::{SendError, Sender},
-    scope,
-};
+use crossbeam::channel::{SendError, Sender};
 
 pub struct KeyDispatcher {
     model: Model,
@@ -15,18 +12,13 @@ pub struct KeyDispatcher {
 
 impl KeyDispatcher {
     pub fn run(model: Model) {
-        scope(|s| {
-            let (tx, rx) = crossbeam::channel::bounded(0);
-            let help_window = help::HelpWindow::new();
-            let w = help_window.window().clone();
-            s.spawn(move |_| super::help::run(w, rx));
-            connection::grab_keys(&model.get_root_grab_keys());
-            let mut kd = KeyDispatcher { model, help_window };
-            loop {
-                kd.run_event_loop(None, &tx).unwrap();
-            }
-        })
-        .unwrap();
+        let (tx, rx) = crossbeam::channel::bounded(0);
+        let help_window = help::HelpWindow::new();
+        let w = help_window.window().clone();
+        std::thread::spawn(move || super::help::run(w, rx));
+        KeyDispatcher { model, help_window }
+            .run_event_loop(None, &tx)
+            .unwrap();
     }
 
     fn run_event_loop(
@@ -39,8 +31,9 @@ impl KeyDispatcher {
 
         let bindings = self.model.get_applicable_bindings(mode_name, &Context {});
         self.help_window.update(bindings);
-        if mode.is_some() {
-            tx.send(help::HelpMessage::Arm)?;
+        match mode {
+            None => connection::grab_keys(&self.model.get_root_grab_keys()),
+            Some(_) => tx.send(help::HelpMessage::Arm)?,
         }
 
         while let Some(keystroke) = self.wait_for_keystroke() {
@@ -64,7 +57,9 @@ impl KeyDispatcher {
                     Action::Exec(action) => {
                         tx.send(help::HelpMessage::Cancel)?;
                         action(&context);
-                        break;
+                        if mode.is_some() {
+                            break;
+                        }
                     }
                 }
             }
