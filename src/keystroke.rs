@@ -1,4 +1,4 @@
-use super::connection::connection;
+use super::connection::{connection, modifier_keycodes};
 use std::{
     cmp::{Ord, Ordering},
     fmt,
@@ -51,6 +51,7 @@ impl Keystroke {
             None => Default::default(),
         }
     }
+
     pub fn make(modifiers: &[&str], key: &str) -> Vec<Self> {
         match key {
             // Alternate names for modifier keys
@@ -150,6 +151,10 @@ impl Keystroke {
         self.made_with_shift
     }
 
+    pub fn is_modifier(&self) -> bool {
+        modifier_keycodes().contains(&self.keycode)
+    }
+
     fn make_left_right(modifiers: &[&str], key: &str) -> Vec<Self> {
         Self::make(modifiers, &format!("{}_L", key))
             .iter()
@@ -157,6 +162,7 @@ impl Keystroke {
             .copied()
             .collect()
     }
+
 }
 
 impl From<&xcb::KeyPressEvent> for Keystroke {

@@ -1,13 +1,21 @@
-
 use crate::{
     connection,
     keystroke::Keystroke,
     model::{Action, Binding},
 };
+use crossbeam::channel::{Receiver, RecvTimeoutError};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use pango::LayoutExt;
 use std::collections::{BTreeMap, HashMap};
+use std::time::Duration;
+
+pub enum HelpMessage {
+    Arm,
+    Disarm,
+    Cancel,
+    Toggle,
+}
 
 pub struct HelpWindow {
     window: xcb::Window,
@@ -16,6 +24,59 @@ pub struct HelpWindow {
     column_widths: (u32, u32, u32, u32),
     groups: Vec<(Option<&'static str>, Vec<(Keystroke, &'static str)>)>,
     system_bindings: BTreeMap<&'static str, Vec<Keystroke>>, // BTreeMap to retain sort order
+}
+
+pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
+    let mut is_armed = false;
+    let mut is_visible = false;
+    loop {
+        if is_armed {
+            match rx.recv() {
+                Ok(HelpMessage::Arm) => is_armed = true,
+                Ok(HelpMessage::Disarm) => (),
+                Ok(HelpMessage::Cancel) => {
+                    xcb::unmap_window(&connection::connection(), window);
+                    is_visible = false;
+                }
+                Ok(HelpMessage::Toggle) => {
+                    if is_visible {
+                        xcb::unmap_window(&connection::connection(), window);
+                        is_visible = false;
+                    } else {
+                        xcb::map_window(&connection::connection(), window);
+                        is_visible = true;
+                    }
+                }
+                Err(_) => return,
+            }
+        } else {
+            is_armed = false;
+            match rx.recv_timeout(Duration::from_secs(1)) {
+                Ok(HelpMessage::Arm) => is_armed = true,
+                Ok(HelpMessage::Disarm) => (),
+                Ok(HelpMessage::Cancel) => {
+                    xcb::unmap_window(&connection::connection(), window);
+                    is_visible = false;
+                }
+                Ok(HelpMessage::Toggle) => {
+                    if is_visible {
+                        xcb::unmap_window(&connection::connection(), window);
+                        is_visible = false;
+                    } else {
+                        xcb::map_window(&connection::connection(), window);
+                        is_visible = true;
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    if !is_visible {
+                        xcb::map_window(&connection::connection(), window);
+                        is_visible = true;
+                    }
+                }
+                Err(_) => return,
+            }
+        }
+    }
 }
 
 impl HelpWindow {
@@ -175,10 +236,13 @@ impl HelpWindow {
                     cairo_context.fill();
 
                     cairo_context.set_source_rgb(0.8, 0.9, 0.8);
-                    cairo_context.move_to(0.0, (10 + self.system_bindings.len() * 14 + 10) as f64 - 0.5);
+                    cairo_context.move_to(
+                        0.0,
+                        (10 + self.system_bindings.len() * 14 + 10) as f64 - 0.5,
+                    );
                     cairo_context.rel_line_to(self.width as f64, 0.0);
-                        cairo_context.set_line_width(1.0);
-                        cairo_context.stroke();
+                    cairo_context.set_line_width(1.0);
+                    cairo_context.stroke();
 
                     cairo_context.set_source_rgb(0.0, 0.0, 0.0);
 
@@ -280,7 +344,6 @@ impl HelpWindow {
                         y += 14.0;
                     }
                 }
-
             }
         }
     }
@@ -316,7 +379,6 @@ impl HelpWindow {
             })
             .collect();
     }
-
 }
 
 impl Drop for HelpWindow {
@@ -417,7 +479,6 @@ impl Keystroke {
                         }
                     }
                 }
-
             }
 
             (width as u32, width_2 as u32)
@@ -425,7 +486,6 @@ impl Keystroke {
             (0, 0)
         }
     }
-
 }
 
 lazy_static! {
@@ -440,7 +500,6 @@ lazy_static! {
             ("hyper", "hyper-", false),
         ]
     };
-
     static ref KEYSYM_NAME_DISPLAY_FORM: HashMap<&'static str, (&'static str, bool)> = {
         let mut m = HashMap::new();
         m.insert("Tab", ("\u{21e5}", true));
@@ -492,7 +551,6 @@ lazy_static! {
         m.insert("parenright", (")", false));
         m
     };
-
     static ref KEYSYM_NAME_SORT_ORDER: HashMap<&'static str, u8> = {
         let mut m = HashMap::new();
         let symbols = [
@@ -549,5 +607,4 @@ lazy_static! {
         }
         m
     };
-
 }

@@ -1,6 +1,7 @@
 use crate::keystroke::Keystroke;
 use cairo::XCBSurface;
 use std::rc::Rc;
+use std::collections::HashSet;
 
 static mut CONNECTION: Option<Rc<xcb::Connection>> = None;
 pub fn connection() -> Rc<xcb::Connection> {
@@ -13,6 +14,31 @@ pub fn connection() -> Rc<xcb::Connection> {
             .clone()
     }
 }
+
+static mut MODIFIER_KEYCODES: Option<HashSet<xcb::xproto::Keycode>> = None;
+pub fn modifier_keycodes() -> &'static HashSet<xcb::xproto::Keycode>
+{
+    unsafe {
+        MODIFIER_KEYCODES.get_or_insert_with(|| {
+                let connection = connection();
+                let mmc = xcb::xproto::get_modifier_mapping(&connection);
+                let mm = mmc.get_reply().unwrap();
+                let width = mm.keycodes_per_modifier();
+                let keycodes = mm.keycodes();
+                let mut seen = HashSet::new();
+                for mod_index in 0..8 {
+                    for j in 0..width {
+                        let keycode = keycodes[mod_index * (width as usize) + (j as usize)];
+                        if keycode != 0 {
+                            seen.insert(keycode);
+                        }
+                    }
+                }
+                seen
+        })
+    }
+}
+
 
 static mut PUSHBACK_EVENT: Option<xcb::base::GenericEvent> = None;
 pub fn get_pushback_event() -> Option<xcb::base::GenericEvent> {

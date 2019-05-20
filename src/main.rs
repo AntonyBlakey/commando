@@ -1,4 +1,4 @@
-#![feature(inner_deref, type_alias_enum_variants, iter_copied, trait_alias)]
+#![feature(inner_deref, type_alias_enum_variants, trait_alias)]
 #![recursion_limit = "128"]
 
 #[macro_use]
@@ -7,7 +7,6 @@ mod keystroke;
 #[macro_use]
 mod model;
 
-mod action;
 mod connection;
 mod help;
 mod key_dispatcher;
