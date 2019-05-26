@@ -35,17 +35,6 @@ pub fn modifier_keycodes() -> &'static HashSet<xcb::xproto::Keycode> {
     }
 }
 
-static mut PUSHBACK_EVENT: Option<xcb::base::GenericEvent> = None;
-pub fn get_pushback_event() -> Option<xcb::base::GenericEvent> {
-    unsafe { PUSHBACK_EVENT.take() }
-}
-
-pub fn pushback_event(event: xcb::base::GenericEvent) {
-    unsafe {
-        PUSHBACK_EVENT.replace(event);
-    }
-}
-
 pub fn grab_keys(keystrokes: &Vec<Keystroke>) {
     let connection = connection();
     let root = connection.get_setup().roots().nth(0).unwrap().root();
@@ -84,29 +73,15 @@ pub fn ungrab_keyboard() {
 }
 
 pub fn allow_events() {
-    let connection = connection();
     xcb::xproto::allow_events(
-        &connection,
+        connection(),
         xcb::ALLOW_SYNC_KEYBOARD as u8,
         xcb::CURRENT_TIME,
     );
-    connection.flush();
-}
-
-pub fn poll_for_event() -> Option<xcb::base::GenericEvent> {
-    if let Some(event) = get_pushback_event() {
-        return Some(event);
-    }
-
-    allow_events();
-    connection().poll_for_event()
+    connection().flush();
 }
 
 pub fn wait_for_event() -> Option<xcb::base::GenericEvent> {
-    if let Some(event) = get_pushback_event() {
-        return Some(event);
-    }
-
     allow_events();
     connection().wait_for_event()
 }

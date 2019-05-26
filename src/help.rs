@@ -13,82 +13,75 @@ use std::time::Duration;
 pub enum HelpMessage {
     Arm,
     Disarm,
+    Update(Vec<Binding>),
+    Draw,
     Cancel,
     Toggle,
 }
 
 pub struct HelpWindow {
     window: xcb::Window,
+    is_visible: bool,
     width: u32,
     height: u32,
-    column_widths: (u32, u32, u32, u32),
+    header_column_widths: (u32, u32),         // title, keystrokes
+    body_column_widths: (u32, u32, u32, u32), // modifiers, keystroke, arrow, title
     groups: Vec<(Option<&'static str>, Vec<(Keystroke, &'static str)>)>,
     system_bindings: BTreeMap<&'static str, Vec<Keystroke>>, // BTreeMap to retain sort order
 }
 
-pub fn run(window: xcb::Window, rx: Receiver<HelpMessage>) {
-    log::debug!("Help server started");
+impl HelpWindow {
+    pub fn run(&mut self, rx: Receiver<HelpMessage>) {
+        log::debug!("Help server started");
 
-    let mut is_armed = false;
-    let mut is_visible = false;
-    loop {
-        if !is_armed {
-            match rx.recv() {
-                Ok(HelpMessage::Arm) => is_armed = true,
-                Ok(HelpMessage::Disarm) => (),
-                Ok(HelpMessage::Cancel) => {
-                    xcb::unmap_window(&connection::connection(), window);
-                    is_visible = false;
-                    log::debug!("Cancel help");
-                }
-                Ok(HelpMessage::Toggle) => {
-                    if is_visible {
-                        xcb::unmap_window(&connection::connection(), window);
-                        is_visible = false;
-                    } else {
-                        xcb::map_window(&connection::connection(), window);
-                        is_visible = true;
+        let mut is_armed = false;
+        loop {
+            if !is_armed {
+                match rx.recv() {
+                    Ok(HelpMessage::Arm) => is_armed = true,
+                    Ok(HelpMessage::Disarm) => (),
+                    Ok(HelpMessage::Update(bindings)) => {
+                        self.update(bindings);
                     }
-                    log::debug!("Toggle help {}", is_visible);
-                }
-                Err(_) => break,
-            }
-        } else {
-            is_armed = false;
-            match rx.recv_timeout(Duration::from_secs(1)) {
-                Ok(HelpMessage::Arm) => is_armed = true,
-                Ok(HelpMessage::Disarm) => (),
-                Ok(HelpMessage::Cancel) => {
-                    xcb::unmap_window(&connection::connection(), window);
-                    is_visible = false;
-                    log::debug!("Cancel help");
-                }
-                Ok(HelpMessage::Toggle) => {
-                    if is_visible {
-                        xcb::unmap_window(&connection::connection(), window);
-                        is_visible = false;
-                    } else {
-                        xcb::map_window(&connection::connection(), window);
-                        is_visible = true;
+                    Ok(HelpMessage::Draw) => {
+                        self.draw();
                     }
-                    log::debug!("Toggle help {}", is_visible);
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    if !is_visible {
-                        xcb::map_window(&connection::connection(), window);
-                        is_visible = true;
-                        log::debug!("Timeout show help");
+                    Ok(HelpMessage::Cancel) => {
+                        self.set_visible(false);
                     }
+                    Ok(HelpMessage::Toggle) => {
+                        self.set_visible(!self.is_visible);
+                    }
+                    Err(_) => break,
                 }
-                Err(_) => break,
+            } else {
+                is_armed = false;
+                match rx.recv_timeout(Duration::from_secs(1)) {
+                    Ok(HelpMessage::Arm) => is_armed = true,
+                    Ok(HelpMessage::Disarm) => (),
+                    Ok(HelpMessage::Update(bindings)) => {
+                        self.update(bindings);
+                    }
+                    Ok(HelpMessage::Draw) => {
+                        self.draw();
+                    }
+                    Ok(HelpMessage::Cancel) => {
+                        self.set_visible(false);
+                    }
+                    Ok(HelpMessage::Toggle) => {
+                        self.set_visible(!self.is_visible);
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        self.set_visible(true);
+                    }
+                    Err(_) => break,
+                }
             }
         }
+
+        log::debug!("Help server stopped");
     }
 
-    log::debug!("Help server stopped");
-}
-
-impl HelpWindow {
     pub fn new() -> HelpWindow {
         let connection = connection::connection();
         let screen = connection.get_setup().roots().nth(0).unwrap();
@@ -119,19 +112,45 @@ impl HelpWindow {
 
         HelpWindow {
             window,
+            is_visible: false,
             width: 0,
             height: 0,
-            column_widths: Default::default(),
+            header_column_widths: Default::default(),
+            body_column_widths: Default::default(),
             groups: Default::default(),
             system_bindings: Default::default(),
         }
     }
 
-    pub fn window(&self) -> xcb::Window {
-        self.window
+    fn set_visible(&mut self, visible: bool) {
+        if self.is_visible != visible {
+            let connection = connection::connection();
+            if visible {
+                let root = connection.get_setup().roots().nth(0).unwrap().root();
+                let geometry = xcb::get_geometry(connection, root).get_reply().unwrap();
+                xcb::configure_window(
+                    connection,
+                    self.window,
+                    &[
+                        (xcb::CONFIG_WINDOW_X as u16, 0),
+                        (
+                            xcb::CONFIG_WINDOW_Y as u16,
+                            (geometry.height() as u32 - self.height) / 2,
+                        ),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, self.width),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, self.height),
+                    ],
+                );
+                xcb::map_window(connection, self.window);
+            } else {
+                xcb::unmap_window(connection, self.window);
+            }
+            connection.flush();
+            self.is_visible = visible;
+        }
     }
 
-    pub fn update(&mut self, bindings: Vec<Binding>) {
+    fn update(&mut self, bindings: Vec<Binding>) {
         self.set_bindings(bindings);
 
         if let Ok(surface) = connection::get_cairo_surface(self.window) {
@@ -145,66 +164,121 @@ impl HelpWindow {
                 let symbol_font_description =
                     pango::FontDescription::from_string("Lucida Grande 11px");
 
-                layout.set_font_description(&font_description);
-                layout.set_text("\u{2794}");
-                let width_3 = layout.get_pixel_size().0 as u32;
+                self.height = 0;
+                self.width = 0;
 
-                let mut height = 0;
+                if self.system_bindings.is_empty() {
+                    self.header_column_widths = (0, 0);
+                } else {
+                    self.height += 10;
 
-                if !self.system_bindings.is_empty() {
-                    height += self.system_bindings.len() as u32 * 14 + 10 + 10;
-                }
+                    let mut width_1: u32 = 0;
+                    let mut width_2: u32 = 0;
 
-                let mut width_1 = 0;
-                let mut width_2 = 0;
-                let mut width_4 = 0;
-                for (group, group_bindings) in &self.groups {
-                    if let Some(_) = group {
-                        height += 8 + 14 + 2 + 4;
-                    }
-                    for (keystroke, label) in group_bindings {
-                        height += 14;
-                        let (w1, w2) = keystroke.process_help(
-                            &cairo_context,
-                            &key_font_description,
-                            &symbol_font_description,
-                            true,
-                        );
-                        width_1 = width_1.max(w1);
-                        width_2 = width_2.max(w2);
+                    for (label, keystrokes) in &self.system_bindings {
+                        layout.set_font_description(&font_description);
                         layout.set_text(label);
-                        width_4 = width_4.max(layout.get_pixel_size().0 as u32);
+                        let w1 = layout.get_pixel_size().0 as u32;
+                        layout.set_text(": ");
+                        let w2 = layout.get_pixel_size().0 as u32;
+                        width_1 = width_1.max(w1 + w2);
+
+                        let mut w = 0;
+                        for (index, keystroke) in keystrokes.iter().enumerate() {
+                            let (w1, w2) = keystroke.process_help(
+                                &cairo_context,
+                                &key_font_description,
+                                &symbol_font_description,
+                                false,
+                            );
+                            w += w1 + w2;
+
+                            if index < keystrokes.len() - 1 {
+                                layout.set_text(" / ");
+                                w += layout.get_pixel_size().0 as u32;
+                            }
+                        }
+                        width_2 = width_2.max(w);
+
+                        self.height += 14;
                     }
+
+                    self.header_column_widths = (width_1, width_2);
+                    self.width = self.width.max(10 + width_1 + width_2 + 10);
+
+                    self.height += 10;
                 }
 
-                self.column_widths = (width_1, width_2, width_3, width_4);
+                if self.groups.is_empty() {
+                    self.body_column_widths = (0, 0, 0, 0);
+                } else {
+                    self.height += 10;
 
-                self.width = 10 + width_1 + width_2 + 10 + width_3 + 10 + width_4 + 10;
-                self.height = 10 + height + 10;
+                    let mut width_1: u32 = 0;
+                    let mut width_2: u32 = 0;
+                    layout.set_font_description(&font_description);
+                    layout.set_text("\u{2794}");
+                    let width_3 = layout.get_pixel_size().0 as u32;
+                    let mut width_4: u32 = 0;
 
+                    for (group, group_bindings) in &self.groups {
+                        if let Some(_) = group {
+                            self.height += 8 + 14 + 2 + 4;
+                        }
+
+                        for (keystroke, label) in group_bindings {
+                            let (w1, w2) = keystroke.process_help(
+                                &cairo_context,
+                                &key_font_description,
+                                &symbol_font_description,
+                                false,
+                            );
+                            width_1 = width_1.max(w1);
+                            width_2 = width_2.max(w2);
+                            layout.set_text(label);
+                            width_4 = width_4.max(layout.get_pixel_size().0 as u32);
+
+                            self.height += 14;
+                        }
+                    }
+                    self.body_column_widths = (width_1, width_2, width_3, width_4);
+                    self.width = self
+                        .width
+                        .max(10 + width_1 + width_2 + 10 + width_3 + 10 + width_4 + 10);
+
+                    self.height += 10;
+                }
+
+
+                eprintln!("Resize help window to {} x {}", self.width, self.height);
+            }
+        }
+
+        let connection = connection::connection();
+        if let Ok(attributes) = xcb::get_window_attributes(connection, self.window).get_reply() {
+            if attributes.map_state() == xcb::MAP_STATE_VIEWABLE as u8 {
+                let root = connection.get_setup().roots().nth(0).unwrap().root();
+                let geometry = xcb::get_geometry(connection, root).get_reply().unwrap();
                 xcb::configure_window(
-                    &connection::connection(),
+                    connection,
                     self.window,
                     &[
                         (xcb::CONFIG_WINDOW_X as u16, 0),
-                        (xcb::CONFIG_WINDOW_Y as u16, (1440 - self.height) / 2),
+                        (
+                            xcb::CONFIG_WINDOW_Y as u16,
+                            (geometry.height() as u32 - self.height) / 2,
+                        ),
                         (xcb::CONFIG_WINDOW_WIDTH as u16, self.width),
                         (xcb::CONFIG_WINDOW_HEIGHT as u16, self.height),
                     ],
                 );
-            }
-        }
-
-        if let Ok(attributes) =
-            xcb::get_window_attributes(&connection::connection(), self.window).get_reply()
-        {
-            if attributes.map_state() == xcb::MAP_STATE_VIEWABLE as u8 {
+                connection.flush();
                 self.draw();
             }
         }
     }
 
-    pub fn draw(&self) {
+    fn draw(&self) {
         if let Ok(surface) = connection::get_cairo_surface(self.window) {
             let cairo_context = cairo::Context::new(&surface);
             if let Some(layout) = pangocairo::functions::create_layout(&cairo_context) {
@@ -226,13 +300,8 @@ impl HelpWindow {
                 cairo_context.close_path();
                 cairo_context.fill();
 
-                let x_column_1 = 10.0;
-                let x_column_2 = x_column_1 + self.column_widths.0 as f64;
-                let x_column_3 = x_column_2 + self.column_widths.1 as f64 + 10.0;
-                let x_column_4 = x_column_3 + self.column_widths.2 as f64 + 10.0;
-                let x_right = x_column_4 + self.column_widths.3 as f64;
 
-                let mut y = 10.0;
+                let mut y = 0.0;
 
                 if !self.system_bindings.is_empty() {
                     cairo_context.set_source_rgb(0.9, 1.0, 0.9);
@@ -255,9 +324,11 @@ impl HelpWindow {
 
                     cairo_context.set_source_rgb(0.0, 0.0, 0.0);
 
-                    let save_y = y;
-                    let mut col_2 = x_column_1;
-                    for (label, _) in &self.system_bindings {
+                    y += 10.0;
+
+                    let x_column_1 = 10.0;
+                    let x_column_2 = x_column_1 + self.header_column_widths.0 as f64;
+                    for (label, keystrokes) in &self.system_bindings {
                         let mut x = x_column_1;
                         cairo_context.move_to(x, y);
                         layout.set_text(label);
@@ -267,16 +338,8 @@ impl HelpWindow {
                         cairo_context.move_to(x, y);
                         layout.set_text(": ");
                         pangocairo::functions::show_layout(&cairo_context, &layout);
-                        x += layout.get_pixel_size().0 as f64;
 
-                        col_2 = col_2.max(x);
-
-                        y += 14.0;
-                    }
-
-                    y = save_y;
-                    for (_, keystrokes) in &self.system_bindings {
-                        let mut x = col_2;
+                        let mut x = x_column_2;
                         for (index, keystroke) in keystrokes.iter().enumerate() {
                             cairo_context.move_to(x, y);
                             let (w1, w2) = keystroke.process_help(
@@ -308,52 +371,62 @@ impl HelpWindow {
                     }
 
                     y += 10.0;
-                    y += 10.0;
                 }
 
-                for (group, group_bindings) in &self.groups {
-                    if let Some(group_name) = group {
-                        y += 8.0;
-                        cairo_context.set_source_rgb(0.0, 0.5, 0.0);
-                        cairo_context.move_to(x_column_1, y);
-                        layout.set_text(group_name);
-                        pangocairo::functions::show_layout(&cairo_context, &layout);
-                        y += 14.0;
+                if !self.groups.is_empty() {
+                    y += 10.0;
 
-                        y += 2.0;
-                        cairo_context.set_source_rgb(0.7, 0.85, 0.7);
-                        cairo_context.move_to(x_column_1, y + 0.5);
-                        cairo_context.line_to(x_right, y + 0.5);
-                        cairo_context.set_line_width(1.0);
-                        cairo_context.stroke();
-                        y += 4.0;
+                    let x_column_1 = 10.0;
+                    let x_column_2 = x_column_1 + self.body_column_widths.0 as f64;
+                    let x_column_3 = x_column_2 + self.body_column_widths.1 as f64 + 10.0;
+                    let x_column_4 = x_column_3 + self.body_column_widths.2 as f64 + 10.0;
+                    let x_right = x_column_4 + self.body_column_widths.3 as f64;
+                    for (group, group_bindings) in &self.groups {
+                        if let Some(group_name) = group {
+                            y += 8.0;
+                            cairo_context.set_source_rgb(0.0, 0.5, 0.0);
+                            cairo_context.move_to(x_column_1, y);
+                            layout.set_text(group_name);
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+                            y += 14.0;
+
+                            y += 2.0;
+                            cairo_context.set_source_rgb(0.7, 0.85, 0.7);
+                            cairo_context.move_to(x_column_1, y + 0.5);
+                            cairo_context.line_to(x_right, y + 0.5);
+                            cairo_context.set_line_width(1.0);
+                            cairo_context.stroke();
+                            y += 4.0;
+                        }
+
+                        for (keystroke, label) in group_bindings {
+                            cairo_context.set_source_rgb(0.0, 0.0, 0.0);
+
+                            cairo_context.move_to(x_column_2, y);
+                            keystroke.process_help(
+                                &cairo_context,
+                                &key_font_description,
+                                &symbol_font_description,
+                                true,
+                            );
+
+                            cairo_context.move_to(x_column_4, y);
+                            layout.set_text(label);
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+
+                            cairo_context.set_source_rgb(0.7, 0.7, 0.7);
+
+                            cairo_context.move_to(x_column_3, y);
+                            layout.set_text("\u{2794}");
+                            pangocairo::functions::show_layout(&cairo_context, &layout);
+
+                            y += 14.0;
+                        }
                     }
 
-                    for (keystroke, label) in group_bindings {
-                        cairo_context.set_source_rgb(0.0, 0.0, 0.0);
-
-                        cairo_context.move_to(x_column_2, y);
-                        keystroke.process_help(
-                            &cairo_context,
-                            &key_font_description,
-                            &symbol_font_description,
-                            true,
-                        );
-
-                        cairo_context.move_to(x_column_4, y);
-                        layout.set_text(label);
-                        pangocairo::functions::show_layout(&cairo_context, &layout);
-
-                        cairo_context.set_source_rgb(0.7, 0.7, 0.7);
-
-                        cairo_context.move_to(x_column_3, y);
-                        layout.set_text("\u{2794}");
-                        pangocairo::functions::show_layout(&cairo_context, &layout);
-
-                        y += 14.0;
-                    }
                 }
             }
+            connection::connection().flush();
         }
     }
 

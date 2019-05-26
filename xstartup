@@ -14,10 +14,10 @@ xmodmap -e 'add mod3 = Hyper_R'
 
 tigervncconfig -nowin & # Handles C/C/P
 
-# $HOME/.config/commando/launch.sh &
 nitrogen --random --set-scaled $HOME/.config/wallpaper &
-(sleep 4 ; polybar --reload top & ) &
-# (sleep 4 ; alacritty & ) &
-# (sleep 4 ; alacritty & ) &
-# (sleep 4 ; alacritty & ) &
-RUST_BACKTRACE=1 target/debug/commando
+../ceramic/target/debug/ceramic &
+(sleep 4 ; ~/.config/polybar/launch.sh ) &
+(sleep 4 ; alacritty & ) &
+(sleep 4 ; alacritty & ) &
+(sleep 4 ; alacritty & ) &
+RUST_BACKTRACE=1 target/debug/commando -vvv

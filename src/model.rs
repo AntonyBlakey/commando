@@ -1,5 +1,5 @@
 use super::{connection::connection, keystroke::Keystroke};
-use std::{collections::HashMap, rc::Rc, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 pub struct Context {}
 
@@ -38,7 +38,7 @@ impl Model {
         keystrokes: Vec<Keystroke>,
         label: &'static str,
         group: Option<&'static str>,
-        guard: Option<Arc<Guard>>,
+        guard: Option<Arc<Box<GuardFn>>>,
         action: Action,
     ) {
         self.bindings
@@ -86,21 +86,20 @@ impl Model {
     }
 }
 
-pub trait Guard = Fn(&Context) -> bool;
-
-pub fn new_guard<F>(f: F) -> Arc<Guard>
+pub trait GuardFn = Fn(&Context) -> bool + Sync + Send + 'static;
+pub fn new_guardfn<F>(f: F) -> Arc<Box<GuardFn>>
 where
-    F: Guard + 'static,
+    F: GuardFn,
 {
-    Arc::new(f)
+    Arc::new(Box::new(f))
 }
 
-pub trait ActionFn = Fn(&Context);
-pub fn new_actionfn<F>(f: F) -> Arc<ActionFn>
+pub trait ActionFn = Fn(&Context) + Sync + Send + 'static;
+pub fn new_actionfn<F>(f: F) -> Arc<Box<ActionFn>>
 where
-    F: ActionFn + 'static,
+    F: ActionFn,
 {
-    Arc::new(f)
+    Arc::new(Box::new(f))
 }
 
 #[derive(Clone)]
@@ -108,8 +107,8 @@ pub enum Action {
     Cancel,
     ToggleHelp,
     Mode(&'static str),
-    Call(Arc<ActionFn>),
-    Exec(Arc<ActionFn>),
+    Call(Arc<Box<ActionFn>>),
+    Exec(Arc<Box<ActionFn>>),
 }
 
 #[derive(Clone)]
@@ -117,7 +116,7 @@ pub struct Binding {
     keystroke: Keystroke,
     label: &'static str,
     group: Option<&'static str>,
-    guard: Option<Arc<Guard>>,
+    guard: Option<Arc<Box<GuardFn>>>,
     action: Action,
 }
 
@@ -126,7 +125,7 @@ impl Binding {
         keystroke: Keystroke,
         label: &'static str,
         group: Option<&'static str>,
-        guard: Option<Arc<Guard>>,
+        guard: Option<Arc<Box<GuardFn>>>,
         action: Action,
     ) -> Binding {
         Self {
@@ -165,11 +164,11 @@ impl Binding {
 #[macro_export]
 macro_rules! bindings {
 
-    (@new_guard None | $($args:tt)* | $($body:tt)+) => { new_guard(| $($args)* | $($body)+) };
-    (@new_guard None $($body:tt)+) => { new_guard(|_ctx:&Context| $($body)+) };
+    (@new_guardfn None | $($args:tt)* | $($body:tt)+) => { new_guardfn(| $($args)* | $($body)+) };
+    (@new_guardfn None $($body:tt)+) => { new_guardfn(|_ctx:&Context| $($body)+) };
 
-    (@new_guard $old_guard:ident | $($args:tt)* | $($body:tt)+) => { new_guard(| $($args)* | $($body)+) };
-    (@new_guard $old_guard:ident $($body:tt)+) => { new_guard(|_ctx:&Context| $($body)+) };
+    (@new_guardfn $old_guard:ident | $($args:tt)* | $($body:tt)+) => { new_guardfn(| $($args)* | $($body)+) };
+    (@new_guardfn $old_guard:ident $($body:tt)+) => { new_guardfn(|_ctx:&Context| $($body)+) };
 
     (@new_actionfn | $($x:tt)+) => { new_actionfn(| $($x)+) };
     (@new_actionfn $($x:tt)+) => { new_actionfn(|_ctx:&Context| $($x)+) };
@@ -226,10 +225,10 @@ macro_rules! bindings {
 
     (
         @in_mode $model:ident $mode:tt $group:tt $guard:tt
-        guard ( $($new_guard:tt)+ ) { $($body:tt)+ } $($rest:tt)*
+        guard ( $($new_guardfn:tt)+ ) { $($body:tt)+ } $($rest:tt)*
     ) => {
         {
-            let guard = Some(bindings!(@new_guard $guard $($new_guard)+));
+            let guard = Some(bindings!(@new_guardfn $guard $($new_guardfn)+));
             bindings!(@in_mode $model $mode $group guard $($body)+);
         }
         bindings!(@in_mode $model $mode $group $guard $($rest)*);
@@ -253,10 +252,10 @@ macro_rules! bindings {
 
     (
         @in_model $model:ident $guard:tt
-        guard ( $($new_guard:tt)+ ) { $($body:tt)+ } $($rest:tt)*
+        guard ( $($new_guardfn:tt)+ ) { $($body:tt)+ } $($rest:tt)*
     ) => {
         {
-            let guard = Some(bindings!(@new_guard $guard $($new_guard)+));
+            let guard = Some(bindings!(@new_guardfn $guard $($new_guardfn)+));
             bindings!(@in_model $model guard $($body)+);
         }
         bindings!(@in_model $model $guard $($rest)*);
