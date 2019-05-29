@@ -17,7 +17,7 @@ tigervncconfig -nowin & # Handles C/C/P
 nitrogen --random --set-scaled $HOME/.config/wallpaper &
 ../ceramic/target/debug/ceramic &
 (sleep 4 ; ~/.config/polybar/launch.sh ) &
-(sleep 4 ; alacritty & ) &
-(sleep 4 ; alacritty & ) &
-(sleep 4 ; alacritty & ) &
+(sleep 4 ; lxterminal & ) &
+(sleep 4 ; lxterminal & ) &
+(sleep 4 ; lxterminal & ) &
 RUST_BACKTRACE=1 target/debug/commando -vvv
