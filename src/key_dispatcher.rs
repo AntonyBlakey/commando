@@ -8,6 +8,7 @@ use crossbeam::channel::{SendError, Sender};
 pub struct KeyDispatcher {
     model: Model,
     last_release: (xcb::Keycode, u16, xcb::Timestamp),
+    keyboard_is_grabbed: bool,
 }
 
 impl KeyDispatcher {
@@ -17,6 +18,7 @@ impl KeyDispatcher {
         KeyDispatcher {
             model,
             last_release: (0, 0, 0),
+            keyboard_is_grabbed: false,
         }
         .run_event_loop(None, &sender)
         .unwrap();
@@ -45,7 +47,6 @@ impl KeyDispatcher {
             if let Some(binding) = self.model.get_binding(mode_name, &Context {}, keystroke) {
                 match binding.action() {
                     Action::Cancel => {
-                        connection::ungrab_keyboard();
                         tx.send(help::HelpMessage::Cancel)?;
                         if mode.is_some() {
                             break;
@@ -55,10 +56,9 @@ impl KeyDispatcher {
                     Action::ToggleHelp => tx.send(help::HelpMessage::Toggle)?,
 
                     Action::Mode(new_mode) => {
-                        if mode.is_none() {
-                            connection::grab_keyboard();
-                        }
+                        self.set_keyboard_is_grabbed(true);
                         self.run_event_loop(Some(new_mode), tx)?;
+                        self.set_keyboard_is_grabbed(false);
                         if mode.is_none() {
                             let bindings =
                                 self.model.get_applicable_bindings(mode_name, &Context {});
@@ -72,7 +72,7 @@ impl KeyDispatcher {
 
                     Action::Exec(action) => {
                         tx.send(help::HelpMessage::Cancel)?;
-                        connection::ungrab_keyboard();
+                        self.set_keyboard_is_grabbed(false);
                         action(&context);
                         if mode.is_some() {
                             break;
@@ -87,7 +87,18 @@ impl KeyDispatcher {
         Ok(())
     }
 
-    pub fn wait_for_keystroke(&mut self, tx: &Sender<help::HelpMessage>) -> Option<Keystroke> {
+    fn set_keyboard_is_grabbed(&mut self, keyboard_is_grabbed: bool) {
+        if keyboard_is_grabbed != self.keyboard_is_grabbed {
+            if keyboard_is_grabbed {
+                connection::grab_keyboard();
+            } else {
+                connection::ungrab_keyboard();
+            }
+            self.keyboard_is_grabbed = keyboard_is_grabbed;
+        }
+    }
+
+    fn wait_for_keystroke(&mut self, tx: &Sender<help::HelpMessage>) -> Option<Keystroke> {
         let mut last_modifier = None;
         while let Some(event) = connection::wait_for_event() {
             match event.response_type() {

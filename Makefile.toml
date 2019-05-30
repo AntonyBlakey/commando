@@ -6,14 +6,17 @@ args = ["build"]
 dependencies = ["build"]
 script = [
     "Xephyr :2 -screen 1680x1050 -dpi 96 &",
+    "rm -f *.log",
     "sleep 1",
-    "DISPLAY=:2 ../ceramic/target/debug/ceramic &",
+    "(DISPLAY=:2 RUST_BACKTRACE=1 ../ceramic/target/debug/ceramic >ceramic.log 2>ceramic.err.log ; echo 'Finished Ceramic' >>ceramic.log) &",
+    "(DISPLAY=:2 RUST_BACKTRACE=1 ../commando/target/debug/commando -vvv >commando.log 2>commando.err.log ; echo 'Finished Commando' >>commando.log) &",
     "(sleep 1 ; DISPLAY=:2 nitrogen --set-scaled ~/.config/wallpaper/rsmith_single_blade_of_grass.jpg) &",
     "(sleep 1 ; DISPLAY=:2 MONITOR=default polybar --reload top & ) &",
-    "(sleep 2 ; DISPLAY=:2 lxterminal &) &",
-    "(sleep 2 ; DISPLAY=:2 lxterminal &) &",
-    "(sleep 2 ; DISPLAY=:2 lxterminal &) &",
-    "DISPLAY=:2 RUST_BACKTRACE=1 target/debug/commando -vvv"
+    "(sleep 2 ; DISPLAY=:2 rxvt &) &",
+    "(sleep 2 ; DISPLAY=:2 rxvt &) &",
+    "(sleep 2 ; DISPLAY=:2 rxvt &) &",
+    "sleep 1",
+    "tail -fqF *.log"
 ]
 
 [tasks.vnc]
