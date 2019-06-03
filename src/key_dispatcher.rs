@@ -7,6 +7,7 @@ use crossbeam::channel::{SendError, Sender};
 
 pub struct KeyDispatcher {
     model: Model,
+    help_tx: Sender<help::HelpMessage>,
     last_release: (xcb::Keycode, u16, xcb::Timestamp),
     keyboard_is_grabbed: bool,
 }
@@ -17,88 +18,97 @@ impl KeyDispatcher {
         std::thread::spawn(move || help::HelpWindow::new().run(receiver));
         KeyDispatcher {
             model,
+            help_tx: sender,
             last_release: (0, 0, 0),
             keyboard_is_grabbed: false,
         }
-        .run_event_loop(None, &sender)
+        .run_top_level_event_loop()
         .unwrap();
     }
 
-    fn run_event_loop(
-        &mut self,
-        mode: Option<&str>,
-        tx: &Sender<help::HelpMessage>,
-    ) -> Result<(), SendError<help::HelpMessage>> {
+    fn run_top_level_event_loop(&mut self) -> Result<(), SendError<help::HelpMessage>> {
+        log::debug!("Enter top level runloop");
+
         let context = Context {};
-        let mode_name = mode.unwrap_or("@root");
+        let bindings = self.model.get_applicable_bindings("@root", &context);
+        self.help_tx.send(help::HelpMessage::Update(bindings))?;
+        connection::grab_keys(&self.model.get_root_grab_keys());
 
-        log::debug!("Enter runloop for mode {}", mode_name);
-
-        let bindings = self.model.get_applicable_bindings(mode_name, &Context {});
-        tx.send(help::HelpMessage::Update(bindings))?;
-        match mode {
-            None => connection::grab_keys(&self.model.get_root_grab_keys()),
-            Some(_) => tx.send(help::HelpMessage::Arm)?,
-        }
-
-        while let Some(keystroke) = self.wait_for_keystroke(tx) {
-            log::debug!("Got keystroke {}", keystroke);
-            tx.send(help::HelpMessage::Disarm)?;
-            if let Some(binding) = self.model.get_binding(mode_name, &Context {}, keystroke) {
+        while let Some(keystroke) = self.wait_for_keystroke() {
+            connection::ungrab_keyboard();
+            self.help_tx.send(help::HelpMessage::Disarm)?;
+            if let Some(binding) = self.model.get_binding("@root", &context, keystroke) {
+                self.handle_action(&context, &binding.action())?;
                 match binding.action() {
-                    Action::Cancel => {
-                        tx.send(help::HelpMessage::Cancel)?;
-                        if mode.is_some() {
-                            break;
-                        }
+                    Action::Mode(_) => {
+                        let bindings = self.model.get_applicable_bindings("@root", &context);
+                        self.help_tx.send(help::HelpMessage::Update(bindings))?;
                     }
-
-                    Action::ToggleHelp => tx.send(help::HelpMessage::Toggle)?,
-
-                    Action::Mode(new_mode) => {
-                        self.set_keyboard_is_grabbed(true);
-                        self.run_event_loop(Some(new_mode), tx)?;
-                        self.set_keyboard_is_grabbed(false);
-                        if mode.is_none() {
-                            let bindings =
-                                self.model.get_applicable_bindings(mode_name, &Context {});
-                            tx.send(help::HelpMessage::Update(bindings))?;
-                        }
-                    }
-
-                    Action::Call(action) => {
-                        action(&context);
-                    }
-
-                    Action::Exec(action) => {
-                        tx.send(help::HelpMessage::Cancel)?;
-                        self.set_keyboard_is_grabbed(false);
-                        action(&context);
-                        if mode.is_some() {
-                            break;
-                        }
-                    }
+                    _ => {}
                 }
             }
         }
 
-        log::debug!("Exit runloop for mode {}", mode_name);
+        log::debug!("Exit top level runloop");
 
         Ok(())
     }
 
-    fn set_keyboard_is_grabbed(&mut self, keyboard_is_grabbed: bool) {
-        if keyboard_is_grabbed != self.keyboard_is_grabbed {
-            if keyboard_is_grabbed {
-                connection::grab_keyboard();
-            } else {
-                connection::ungrab_keyboard();
+    fn run_modal_event_loop(&mut self, mode: &str) -> Result<(), SendError<help::HelpMessage>> {
+        log::debug!("Enter runloop for mode {}", mode);
+
+        let context = Context {};
+        let bindings = self.model.get_applicable_bindings(mode, &context);
+        self.help_tx.send(help::HelpMessage::Update(bindings))?;
+        self.help_tx.send(help::HelpMessage::Arm)?;
+
+        while let Some(keystroke) = self.wait_for_keystroke() {
+            self.help_tx.send(help::HelpMessage::Disarm)?;
+            if let Some(binding) = self.model.get_binding(mode, &context, keystroke) {
+                self.handle_action(&context, &binding.action())?;
+                match binding.action() {
+                    Action::Cancel | Action::Mode(_) | Action::Exec(_) => break,
+                    _ => {}
+                }
             }
-            self.keyboard_is_grabbed = keyboard_is_grabbed;
         }
+
+        log::debug!("Exit runloop for mode {}", mode);
+
+        Ok(())
     }
 
-    fn wait_for_keystroke(&mut self, tx: &Sender<help::HelpMessage>) -> Option<Keystroke> {
+    fn handle_action(
+        &mut self,
+        context: &Context,
+        action: &Action,
+    ) -> Result<(), SendError<help::HelpMessage>> {
+        match action {
+            Action::Cancel => {
+                self.help_tx.send(help::HelpMessage::Cancel)?;
+            }
+
+            Action::Mode(new_mode) => {
+                self.set_keyboard_is_grabbed(true);
+                self.run_modal_event_loop(new_mode)?;
+                self.set_keyboard_is_grabbed(false);
+            }
+
+            Action::Exec(action) => {
+                self.help_tx.send(help::HelpMessage::Cancel)?;
+                self.set_keyboard_is_grabbed(false);
+                action(context);
+            }
+
+            Action::Call(action) => action(context),
+
+            Action::ToggleHelp => self.help_tx.send(help::HelpMessage::Toggle)?,
+        }
+
+        Ok(())
+    }
+
+    fn wait_for_keystroke(&mut self) -> Option<Keystroke> {
         let mut last_modifier = None;
         while let Some(event) = connection::wait_for_event() {
             match event.response_type() {
@@ -110,12 +120,15 @@ impl KeyDispatcher {
                         && press_event.time() == self.last_release.2
                     {
                         // These conditions indicate a key repeat
-                        self.wait_for_key_release(&press_event, tx);
+                        self.wait_for_key_release(press_event.detail());
                         continue;
                     }
                     let key = Keystroke::from(press_event);
                     if !key.is_modifier() {
-                        if self.wait_for_key_release(&press_event, tx) {
+                        if self.wait_for_key_release(press_event.detail())
+                            == Some(press_event.state())
+                        {
+                            log::debug!("Got keystroke {}", key);
                             return Some(key);
                         }
                     } else {
@@ -132,6 +145,7 @@ impl KeyDispatcher {
                     );
                     if let Some((key, detail)) = last_modifier {
                         if detail == release_event.detail() {
+                            log::debug!("Got keystroke {}", key);
                             return Some(key);
                         }
                     }
@@ -139,7 +153,7 @@ impl KeyDispatcher {
                 }
 
                 xcb::EXPOSE => {
-                    tx.send(help::HelpMessage::Draw).unwrap();
+                    self.help_tx.send(help::HelpMessage::Draw).unwrap();
                 }
 
                 _ => {}
@@ -149,11 +163,8 @@ impl KeyDispatcher {
         return None;
     }
 
-    fn wait_for_key_release(
-        &mut self,
-        press_event: &xcb::KeyPressEvent,
-        tx: &Sender<help::HelpMessage>,
-    ) -> bool {
+    fn wait_for_key_release(&mut self, keycode: xcb::Keycode) -> Option<u16> {
+        let mut is_cancelled = false;
         while let Some(event) = connection::wait_for_event() {
             match event.response_type() {
                 xcb::KEY_RELEASE => {
@@ -163,57 +174,38 @@ impl KeyDispatcher {
                         release_event.state(),
                         release_event.time(),
                     );
-                    if release_event.detail() != press_event.detail() {
-                        self.wait_for_cancelled_key_release(press_event, tx);
-                        return false;
+                    if release_event.detail() == keycode {
+                        return if is_cancelled {
+                            None
+                        } else {
+                            Some(release_event.state())
+                        };
                     }
-                    if release_event.state() != press_event.state() {
-                        return false;
-                    }
-                    return true;
                 }
 
                 xcb::KEY_PRESS => {
-                    self.wait_for_cancelled_key_release(press_event, tx);
-                    return false;
+                    is_cancelled = true;
                 }
 
                 xcb::EXPOSE => {
-                    tx.send(help::HelpMessage::Draw).unwrap();
+                    self.help_tx.send(help::HelpMessage::Draw).unwrap();
                 }
 
                 _ => {}
             }
         }
 
-        return false;
+        return None;
     }
 
-    fn wait_for_cancelled_key_release(
-        &mut self,
-        press_event: &xcb::KeyPressEvent,
-        tx: &Sender<help::HelpMessage>,
-    ) {
-        while let Some(event) = connection::wait_for_event() {
-            match event.response_type() {
-                xcb::KEY_RELEASE => {
-                    let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
-                    self.last_release = (
-                        release_event.detail(),
-                        release_event.state(),
-                        release_event.time(),
-                    );
-                    if release_event.detail() == press_event.detail() {
-                        return;
-                    }
-                }
-
-                xcb::EXPOSE => {
-                    tx.send(help::HelpMessage::Draw).unwrap();
-                }
-
-                _ => {}
+    fn set_keyboard_is_grabbed(&mut self, keyboard_is_grabbed: bool) {
+        if keyboard_is_grabbed != self.keyboard_is_grabbed {
+            if keyboard_is_grabbed {
+                connection::grab_keyboard();
+            } else {
+                connection::ungrab_keyboard();
             }
+            self.keyboard_is_grabbed = keyboard_is_grabbed;
         }
     }
 }

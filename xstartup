@@ -14,10 +14,16 @@ xmodmap -e 'add mod3 = Hyper_R'
 
 tigervncconfig -nowin & # Handles C/C/P
 
-nitrogen --random --set-scaled $HOME/.config/wallpaper &
-../ceramic/target/debug/ceramic &
-(sleep 4 ; ~/.config/polybar/launch.sh ) &
-(sleep 4 ; lxterminal & ) &
-(sleep 4 ; lxterminal & ) &
-(sleep 4 ; lxterminal & ) &
-RUST_BACKTRACE=1 target/debug/commando -vvv
+rm -f *.log
+
+(RUST_BACKTRACE=1 ../ceramic/target/debug/ceramic >ceramic.log 2>ceramic.err.log ; echo 'Finished Ceramic' >>ceramic.log) &
+(RUST_BACKTRACE=1 ../commando/target/debug/commando -vvv >commando.log 2>commando.err.log ; echo 'Finished Commando' >>commando.log) &
+
+nitrogen --set-scaled ~/.config/wallpaper/rsmith_single_blade_of_grass.jpg &
+sleep 2
+~/.config/polybar/launch.sh
+rxvt &
+rxvt &
+rxvt &
+
+tail -fqF *.log

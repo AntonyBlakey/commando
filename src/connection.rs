@@ -36,11 +36,10 @@ pub fn modifier_keycodes() -> &'static HashSet<xcb::xproto::Keycode> {
 }
 
 pub fn grab_keys(keystrokes: &Vec<Keystroke>) {
-    let connection = connection();
-    let root = connection.get_setup().roots().nth(0).unwrap().root();
+    let root = connection().get_setup().roots().nth(0).unwrap().root();
     for desc in keystrokes {
         xcb::xproto::grab_key(
-            &connection,
+            connection(),
             false,
             root,
             desc.modifiers(),
@@ -49,27 +48,48 @@ pub fn grab_keys(keystrokes: &Vec<Keystroke>) {
             xcb::GRAB_MODE_SYNC as u8,
         );
     }
-    connection.flush();
+    connection().flush();
+}
+
+pub fn ungrab_all_keys() {
+    let root = connection().get_setup().roots().nth(0).unwrap().root();
+    xcb::xproto::ungrab_key(
+        connection(),
+        xcb::GRAB_ANY as u8,
+        root,
+        xcb::MOD_MASK_ANY as u16,
+    );
+    connection().flush();
 }
 
 pub fn grab_keyboard() {
-    let connection = connection();
-    let root = connection.get_setup().roots().nth(0).unwrap().root();
-    xcb::xproto::grab_keyboard(
-        &connection,
+    let root = connection().get_setup().roots().nth(0).unwrap().root();
+    match xcb::xproto::grab_keyboard(
+        connection(),
         false,
         root,
         xcb::CURRENT_TIME,
         xcb::GRAB_MODE_ASYNC as u8,
         xcb::GRAB_MODE_SYNC as u8,
-    );
-    connection.flush();
+    )
+    .get_reply()
+    .unwrap()
+    .status() as u32
+    {
+        xcb::xproto::GRAB_STATUS_SUCCESS => log::debug!("Grab keyboard: Success"),
+        xcb::xproto::GRAB_STATUS_ALREADY_GRABBED => log::debug!("Grab keyboard: Already Grabbed"),
+        xcb::xproto::GRAB_STATUS_INVALID_TIME => log::debug!("Grab keyboard: Invalid Time"),
+        xcb::xproto::GRAB_STATUS_NOT_VIEWABLE => log::debug!("Grab keyboard: Not Viewable"),
+        xcb::xproto::GRAB_STATUS_FROZEN => log::debug!("Grab keyboard: Frozen"),
+        x => log::debug!("Grab keyboard: Unknown status: {}", x),
+    }
+    connection().flush();
 }
 
 pub fn ungrab_keyboard() {
-    let connection = connection();
-    xcb::xproto::ungrab_keyboard(&connection, xcb::CURRENT_TIME);
-    connection.flush();
+    log::debug!("Ungrab keyboard");
+    xcb::xproto::ungrab_keyboard(connection(), xcb::CURRENT_TIME);
+    connection().flush();
 }
 
 pub fn allow_events() {
