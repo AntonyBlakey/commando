@@ -8,7 +8,6 @@ use crossbeam::channel::{SendError, Sender};
 pub struct KeyDispatcher {
     model: Model,
     help_tx: Sender<help::HelpMessage>,
-    last_release: (xcb::Keycode, u16, xcb::Timestamp),
     keyboard_is_grabbed: bool,
 }
 
@@ -19,7 +18,6 @@ impl KeyDispatcher {
         KeyDispatcher {
             model,
             help_tx: sender,
-            last_release: (0, 0, 0),
             keyboard_is_grabbed: false,
         }
         .run_top_level_event_loop()
@@ -115,14 +113,6 @@ impl KeyDispatcher {
                 xcb::KEY_PRESS => {
                     last_modifier = None;
                     let press_event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
-                    if press_event.detail() == self.last_release.0
-                        && press_event.state() == self.last_release.1
-                        && press_event.time() == self.last_release.2
-                    {
-                        // These conditions indicate a key repeat
-                        self.wait_for_key_release(press_event.detail());
-                        continue;
-                    }
                     let key = Keystroke::from(press_event);
                     if !key.is_modifier() {
                         if self.wait_for_key_release(press_event.detail())
@@ -138,11 +128,6 @@ impl KeyDispatcher {
 
                 xcb::KEY_RELEASE => {
                     let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
-                    self.last_release = (
-                        release_event.detail(),
-                        release_event.state(),
-                        release_event.time(),
-                    );
                     if let Some((key, detail)) = last_modifier {
                         if detail == release_event.detail() {
                             log::debug!("Got keystroke {}", key);
@@ -169,11 +154,6 @@ impl KeyDispatcher {
             match event.response_type() {
                 xcb::KEY_RELEASE => {
                     let release_event: &xcb::KeyReleaseEvent = unsafe { xcb::cast_event(&event) };
-                    self.last_release = (
-                        release_event.detail(),
-                        release_event.state(),
-                        release_event.time(),
-                    );
                     if release_event.detail() == keycode {
                         return if is_cancelled {
                             None

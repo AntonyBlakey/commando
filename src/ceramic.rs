@@ -48,8 +48,8 @@ pub fn extend_model(model: &mut Model) {
                 Cmd + Shift + 7 => { "To Space 7" ceramic_do("move_focused_window_to_workspace_named: 7") }
                 Cmd + Shift + 8 => { "To Space 8" ceramic_do("move_focused_window_to_workspace_named: 8") }
                 Cmd + Shift + 9 => { "To Space 9" ceramic_do("move_focused_window_to_workspace_named: 9") }
-                // Cmd + Shift + 0 => { "To …" {} }
-                // Cmd + Shift + Opt + 0 => { "Swap With …" {} }
+                Cmd + Shift + 0 => { "To …" ceramic_do("move_focused_window_to_position_of: {window}") }
+                Cmd + Shift + Opt + 0 => { "Swap With …" ceramic_do("swap_focused_window_with: {window}") }
                 Cmd + Opt + 0 => { "Pull To Head …" ceramic_do("move_focused_window_to_head") }
         }
      }
