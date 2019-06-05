@@ -19,6 +19,7 @@ pub fn extend_model(model: &mut Model) {
             Cmd + plus => { "Increase Ratio" ceramic_do("layout/increase_ratio") }
             Cmd + Opt + minus => { "Decrease Count" ceramic_do("layout/decrease_count") }
             Cmd + Opt + plus => { "Increase Count" ceramic_do("layout/increase_count") }
+            Cmd + t => { "Tile Window" ceramic_do("tile_window: {focused_window}") }
             Cmd + r => { "Launch" => window_manager::launch }
             group "Focus" {
                 Cmd + Tab => { "Next" ceramic_do("focus_on_next_window") }
@@ -34,7 +35,7 @@ pub fn extend_model(model: &mut Model) {
                 Cmd + 7 => { "Space 7" ceramic_do("switch_to_workspace_named: 7") }
                 Cmd + 8 => { "Space 8" ceramic_do("switch_to_workspace_named: 8") }
                 Cmd + 9 => { "Space 9" ceramic_do("switch_to_workspace_named: 9") }
-                Cmd + 0 => { "Select …" ceramic_do("focus_on_window: {window}") }
+                Cmd + 0 => { "Select …" ceramic_do("focus_on_window: {selected_window}") }
             }
             group "Move" {
                 Cmd + Shift + j => { "Forward" ceramic_do("move_focused_window_forward") }
@@ -48,8 +49,8 @@ pub fn extend_model(model: &mut Model) {
                 Cmd + Shift + 7 => { "To Space 7" ceramic_do("move_focused_window_to_workspace_named: 7") }
                 Cmd + Shift + 8 => { "To Space 8" ceramic_do("move_focused_window_to_workspace_named: 8") }
                 Cmd + Shift + 9 => { "To Space 9" ceramic_do("move_focused_window_to_workspace_named: 9") }
-                Cmd + Shift + 0 => { "To …" ceramic_do("move_focused_window_to_position_of: {window}") }
-                Cmd + Shift + Opt + 0 => { "Swap With …" ceramic_do("swap_focused_window_with: {window}") }
+                Cmd + Shift + 0 => { "To …" ceramic_do("move_focused_window_to_position_of: {selected_window}") }
+                Cmd + Shift + Opt + 0 => { "Swap With …" ceramic_do("swap_focused_window_with: {selected_window}") }
                 Cmd + Opt + 0 => { "Pull To Head …" ceramic_do("move_focused_window_to_head") }
         }
      }

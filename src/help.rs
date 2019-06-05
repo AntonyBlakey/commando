@@ -250,7 +250,7 @@ impl HelpWindow {
                 }
 
 
-                eprintln!("Resize help window to {} x {}", self.width, self.height);
+                log::debug!("Resize help window to {} x {}", self.width, self.height);
             }
         }
 
