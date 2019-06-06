@@ -28,7 +28,7 @@ impl Model {
         }
     }
 
-    pub fn extend_with(&mut self, factory: &Fn(&mut Self)) {
+    pub fn extend_with(&mut self, factory: &dyn Fn(&mut Self)) {
         factory(self);
     }
 
@@ -38,7 +38,7 @@ impl Model {
         keystrokes: Vec<Keystroke>,
         label: &'static str,
         group: Option<&'static str>,
-        guard: Option<Arc<Box<GuardFn>>>,
+        guard: Option<Arc<Box<dyn GuardFn>>>,
         action: Action,
     ) {
         self.bindings
@@ -87,7 +87,7 @@ impl Model {
 }
 
 pub trait GuardFn = Fn(&Context) -> bool + Sync + Send + 'static;
-pub fn new_guardfn<F>(f: F) -> Arc<Box<GuardFn>>
+pub fn new_guardfn<F>(f: F) -> Arc<Box<dyn GuardFn>>
 where
     F: GuardFn,
 {
@@ -95,7 +95,7 @@ where
 }
 
 pub trait ActionFn = Fn(&Context) + Sync + Send + 'static;
-pub fn new_actionfn<F>(f: F) -> Arc<Box<ActionFn>>
+pub fn new_actionfn<F>(f: F) -> Arc<Box<dyn ActionFn>>
 where
     F: ActionFn,
 {
@@ -107,8 +107,8 @@ pub enum Action {
     Cancel,
     ToggleHelp,
     Mode(&'static str),
-    Call(Arc<Box<ActionFn>>),
-    Exec(Arc<Box<ActionFn>>),
+    Call(Arc<Box<dyn ActionFn>>),
+    Exec(Arc<Box<dyn ActionFn>>),
 }
 
 #[derive(Clone)]
@@ -116,7 +116,7 @@ pub struct Binding {
     keystroke: Keystroke,
     label: &'static str,
     group: Option<&'static str>,
-    guard: Option<Arc<Box<GuardFn>>>,
+    guard: Option<Arc<Box<dyn GuardFn>>>,
     action: Action,
 }
 
@@ -125,7 +125,7 @@ impl Binding {
         keystroke: Keystroke,
         label: &'static str,
         group: Option<&'static str>,
-        guard: Option<Arc<Box<GuardFn>>>,
+        guard: Option<Arc<Box<dyn GuardFn>>>,
         action: Action,
     ) -> Binding {
         Self {
