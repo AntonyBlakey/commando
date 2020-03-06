@@ -1,4 +1,4 @@
-#![feature(inner_deref, type_alias_enum_variants, trait_alias)]
+#![feature(inner_deref, trait_alias)]
 #![recursion_limit = "128"]
 
 #[macro_use]
